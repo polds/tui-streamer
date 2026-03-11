@@ -253,7 +253,15 @@ class Terminal {
         el.className = 'line-event start';
         el.innerHTML = `<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
           <path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0zm3.5 7.5l-5-3A.5.5 0 0 0 6 5v6a.5.5 0 0 0 .5.5.5.5 0 0 0 .25-.066l5-3a.5.5 0 0 0 0-.866z"/>
-        </svg><span>Process started</span><span style="margin-left:auto;opacity:.5;font-size:10px">${ts}</span>`;
+        </svg><span>Process started</span>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+          <button class="btn btn-icon" data-action="copy-all" title="Copy output" style="padding:2px 4px;">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1c0-1-1-1.5-2-1.5H6c-1 0-2 .5-2 1.5zM5.5 2c0-.5.5-.5 1-.5h3c.5 0 1 0 1 .5V3h-5V2zM3 3.5h1V4c0 .5.5 1 1 1h6c.5 0 1-.5 1-1V3.5h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z"/>
+            </svg>
+          </button>
+          <span style="opacity:.5;font-size:10px">${ts}</span>
+        </div>`;
         return el;
       }
 
@@ -317,7 +325,8 @@ class App {
     this.sockets     = {};   // sessionId → SessionSocket
     this.statuses    = {};   // sessionId → 'connecting'|'connected'|'disconnected'
     this.buffers     = {};   // sessionId → Line[]
-    this.expandedBundles = new Set(); // bundle names that are expanded
+    this.collapsedBundles = new Set(); // bundle names that are collapsed
+    this.lastSelectedElement = null;
 
     // DOM refs
     this.$sessionList = document.getElementById('session-list');
@@ -336,6 +345,11 @@ class App {
     this.$connLabel   = document.getElementById('conn-label');
     this.$termOutput  = document.getElementById('terminal-output');
     this.$termHint    = document.getElementById('terminal-hint');
+    this.$selPrompt   = document.getElementById('sel-prompt');
+    this.$selCount    = document.getElementById('sel-count');
+    this.$selCopyBtn  = document.getElementById('btn-sel-copy');
+    this.$selRaysoBtn = document.getElementById('btn-sel-rayso');
+    this.$selClearBtn = document.getElementById('btn-sel-clear');
     this.$cmdInput    = document.getElementById('cmd-input');
     this.$runBtn      = document.getElementById('btn-run');
     this.$clearBtn    = document.getElementById('btn-clear');
@@ -390,6 +404,12 @@ class App {
       if (chip) { this._runExampleCmd(chip.dataset.cmd); return; }
       if (e.target.closest('[data-action="run-hint"]')) this._runFromHint();
     });
+
+    // Terminal selection
+    this.$termOutput.addEventListener('click', (e) => this._handleTerminalClick(e));
+    this.$selCopyBtn.addEventListener('click', () => this._copySelection());
+    this.$selRaysoBtn.addEventListener('click', () => this._raysoSelection());
+    this.$selClearBtn.addEventListener('click', () => this._clearSelection());
 
     // Theme
     this.$themeSelect.addEventListener('change', () => {
@@ -475,7 +495,7 @@ class App {
 
     // Render bundled sessions
     for (const bName of Object.keys(bundles)) {
-      const isExpanded = this.expandedBundles.has(bName);
+      const isExpanded = !this.collapsedBundles.has(bName);
       
       const header = document.createElement('div');
       header.className = 'bundle-header';
@@ -484,10 +504,10 @@ class App {
         <span class="bundle-name" title="${this._esc(bName)}">${this._esc(bName)}</span>
       `;
       header.addEventListener('click', () => {
-        if (this.expandedBundles.has(bName)) {
-          this.expandedBundles.delete(bName);
+        if (this.collapsedBundles.has(bName)) {
+          this.collapsedBundles.delete(bName);
         } else {
-          this.expandedBundles.add(bName);
+          this.collapsedBundles.add(bName);
         }
         this._renderSidebar();
       });
@@ -556,6 +576,8 @@ class App {
     this.$termPanel.classList.remove('hidden');
     this.$termTitle.textContent   = s.name;
     this.$termSubtitle.textContent = id.substring(0, 8) + '…';
+
+    this._clearSelection();
 
     // Replay buffered output
     this.terminal.clear();
@@ -733,6 +755,114 @@ class App {
 
   _hideModal() {
     this.$overlay.classList.add('hidden');
+  }
+
+  _handleTerminalClick(e) {
+    if (window.getSelection().toString().trim().length > 0) return;
+
+    const copyBtn = e.target.closest('[data-action="copy-all"]');
+    if (copyBtn) {
+      this._copyAllOutput(copyBtn);
+      return;
+    }
+
+    const line = e.target.closest('.terminal-line');
+    if (!line) {
+      if (e.target === this.$termOutput) this._clearSelection();
+      return;
+    }
+
+    if (e.metaKey || e.ctrlKey) {
+      line.classList.toggle('selected');
+      this.lastSelectedElement = line.classList.contains('selected') ? line : null;
+    } else if (e.shiftKey && this.lastSelectedElement) {
+      const lines = Array.from(this.$termOutput.querySelectorAll('.terminal-line'));
+      const idx1 = lines.indexOf(this.lastSelectedElement);
+      const idx2 = lines.indexOf(line);
+      if (idx1 !== -1 && idx2 !== -1) {
+        const start = Math.min(idx1, idx2);
+        const end = Math.max(idx1, idx2);
+        for (let i = start; i <= end; i++) {
+          lines[i].classList.add('selected');
+        }
+      }
+    } else {
+      this._clearSelection();
+      line.classList.add('selected');
+      this.lastSelectedElement = line;
+    }
+
+    this._updateSelectionPrompt();
+  }
+
+  _clearSelection() {
+    if (!this.$termOutput) return;
+    const selected = this.$termOutput.querySelectorAll('.terminal-line.selected');
+    for (const el of selected) el.classList.remove('selected');
+    this.lastSelectedElement = null;
+    this._updateSelectionPrompt();
+  }
+
+  _updateSelectionPrompt() {
+    if (!this.$selPrompt) return;
+    const count = this.$termOutput.querySelectorAll('.terminal-line.selected').length;
+    if (count > 0) {
+      this.$selCount.textContent = `${count} line${count > 1 ? 's' : ''} selected`;
+      this.$selPrompt.classList.remove('hidden');
+    } else {
+      this.$selPrompt.classList.add('hidden');
+    }
+  }
+
+  _getSelectedText() {
+    const selected = Array.from(this.$termOutput.querySelectorAll('.terminal-line.selected'));
+    return selected.map(el => {
+      const content = el.querySelector('.line-content');
+      return content ? content.textContent : '';
+    }).join('\n');
+  }
+
+  async _copySelection() {
+    const text = this._getSelectedText();
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      const orig = this.$selCopyBtn.textContent;
+      this.$selCopyBtn.textContent = 'Copied!';
+      setTimeout(() => this.$selCopyBtn.textContent = orig, 1500);
+    } catch {
+      alert('Failed to copy to clipboard');
+    }
+  }
+
+  async _copyAllOutput(btn) {
+    const lines = Array.from(this.$termOutput.querySelectorAll('.terminal-line'));
+    const text = lines.map(el => {
+      const content = el.querySelector('.line-content');
+      return content ? content.textContent : '';
+    }).join('\n');
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      if (btn) {
+        const origHtml = btn.innerHTML;
+        btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 16 16" fill="var(--success)"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0z"/></svg>`;
+        setTimeout(() => btn.innerHTML = origHtml, 1500);
+      }
+    } catch {
+      alert('Failed to copy to clipboard');
+    }
+  }
+
+  _raysoSelection() {
+    const text = this._getSelectedText();
+    if (!text) return;
+    
+    const title = this.$termTitle.textContent || 'tui-streamer';
+    const b64 = btoa(unescape(encodeURIComponent(text)));
+    const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+    const url = `https://ray.so/#theme=candy&background=true&darkMode=${isDark}&padding=16&title=${encodeURIComponent(title)}&code=${b64}&language=auto`;
+    window.open(url, '_blank');
   }
 
   _shellSplit(cmd) {
