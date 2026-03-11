@@ -275,14 +275,17 @@ make lint
 # Build universal binary (arm64 + amd64)
 make build-darwin
 
-# Create a .app bundle (headless server)
+# Create a .app with native WKWebView window
 make app
 
-# Create a .app with native WKWebView window
-make app-webview
+# Create a .app bundle (headless server)
+make app-server
 
 # Create a distributable .dmg
 make dmg
+
+# You can also package a specific bundle JSON, which will dynamically name the application
+make app BUNDLE=./examples/network-bundle/bundle.json
 ```
 
 ### Project Structure

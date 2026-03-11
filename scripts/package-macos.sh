@@ -28,6 +28,7 @@ OUT_DIR="dist"
 CREATE_DMG=false
 SIGN_IDENTITY=""
 WEBVIEW_MODE=false
+BUNDLE_FILE=""
 
 # ── parse arguments ───────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -39,6 +40,7 @@ while [[ $# -gt 0 ]]; do
     --dmg)      CREATE_DMG=true;    shift   ;;
     --sign)     SIGN_IDENTITY="$2"; shift 2 ;;
     --webview)  WEBVIEW_MODE=true;  shift   ;;
+    --bundle)   BUNDLE_FILE="$2";   shift 2 ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
 done
@@ -78,6 +80,12 @@ mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}"
 cp "${BINARY}" "${MACOS_DIR}/${BINARY_NAME}"
 chmod +x "${MACOS_DIR}/${BINARY_NAME}"
 
+# Copy bundle file if provided
+if [[ -n "${BUNDLE_FILE}" && -f "${BUNDLE_FILE}" ]]; then
+  cp "${BUNDLE_FILE}" "${RESOURCES_DIR}/bundle.json"
+  echo "  ✓ Bundled configuration file"
+fi
+
 # Build Info.plist from template
 PLIST_OUT="${CONTENTS}/Info.plist"
 LSUIELEMENT="true"
@@ -87,6 +95,7 @@ if [[ -f "${PLIST_TEMPLATE}" ]]; then
     -e "s/__VERSION__/${VERSION}/g" \
     -e "s/__SHORT_VERSION__/${SHORT_VERSION}/g" \
     -e "s/__LSUIELEMENT__/${LSUIELEMENT}/g" \
+    -e "s/__APP_NAME__/${APP_NAME}/g" \
     "${PLIST_TEMPLATE}" > "${PLIST_OUT}"
 else
   # Fallback: generate a minimal Info.plist inline
@@ -101,7 +110,7 @@ else
     <key>CFBundleName</key>
     <string>${APP_NAME}</string>
     <key>CFBundleDisplayName</key>
-    <string>TUI Streamer</string>
+    <string>${APP_NAME}</string>
     <key>CFBundleExecutable</key>
     <string>${BINARY_NAME}</string>
     <key>CFBundleVersion</key>

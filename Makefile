@@ -1,6 +1,17 @@
 APP_NAME    := TuiStreamer
 BINARY_NAME := tui-streamer
 VERSION     ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+
+ifneq ($(BUNDLE),)
+  BUNDLE_NAME := $(shell python3 -c "import sys, json; d=json.load(open('$(BUNDLE)')); print(d.get('name') or d.get('Name', ''))" 2>/dev/null)
+  ifneq ($(BUNDLE_NAME),)
+    APP_NAME := $(BUNDLE_NAME)
+  endif
+  BUNDLE_FLAG := --bundle "$(BUNDLE)"
+else
+  BUNDLE_FLAG :=
+endif
+
 BUILD_DIR   := dist
 APP_BUNDLE  := $(BUILD_DIR)/$(APP_NAME).app
 DMG_PATH    := $(BUILD_DIR)/$(APP_NAME)-$(VERSION).dmg
@@ -55,7 +66,8 @@ app: build-darwin-webview
 		--name     "$(APP_NAME)" \
 		--version  "$(VERSION)" \
 		--out-dir  "$(BUILD_DIR)" \
-		--webview
+		--webview \
+		$(BUNDLE_FLAG)
 
 ## app-server: build a headless server .app bundle that opens the UI in the
 ##             default browser (cross-compilable, no CGO required).
@@ -66,7 +78,8 @@ app-server: _require-darwin-binary
 		--binary   "$(BUILD_DIR)/$(BINARY_NAME)-darwin-universal" \
 		--name     "$(APP_NAME)" \
 		--version  "$(VERSION)" \
-		--out-dir  "$(BUILD_DIR)"
+		--out-dir  "$(BUILD_DIR)" \
+		$(BUNDLE_FLAG)
 
 ## dmg: create a distributable .dmg (requires 'make app' first, macOS only)
 dmg: _require-app-bundle
@@ -77,7 +90,8 @@ dmg: _require-app-bundle
 		--version  "$(VERSION)" \
 		--out-dir  "$(BUILD_DIR)" \
 		--webview \
-		--dmg
+		--dmg \
+		$(BUNDLE_FLAG)
 
 ## clean: remove build artifacts
 clean:

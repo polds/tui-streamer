@@ -8,10 +8,10 @@
     <string>io.github.polds.tui-streamer</string>
 
     <key>CFBundleName</key>
-    <string>TuiStreamer</string>
+    <string>__APP_NAME__</string>
 
     <key>CFBundleDisplayName</key>
-    <string>TUI Streamer</string>
+    <string>__APP_NAME__</string>
 
     <key>CFBundleExecutable</key>
     <string>tui-streamer</string>

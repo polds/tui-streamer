@@ -5,8 +5,16 @@ sessions on startup.
 
 ## Usage
 
+You can run this bundle directly from the CLI:
+
 ```bash
 tui-streamer -bundle bundle.json -open
+```
+
+Or you can package it as a standalone macOS application. The resulting application will be automatically named `Network Diagnostics.app` based on the bundle configuration:
+
+```bash
+make app BUNDLE=./examples/network-bundle/bundle.json
 ```
 
 ## Sessions

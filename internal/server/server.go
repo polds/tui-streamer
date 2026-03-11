@@ -3,6 +3,7 @@ package server
 
 import (
 	"encoding/json"
+	"io"
 	"io/fs"
 	"log"
 	"net/http"
@@ -22,6 +23,8 @@ var upgrader = websocket.Upgrader{
 
 // Config holds server-level defaults applied to every exec request.
 type Config struct {
+	// Title is the dynamic text to display in the web UI header and browser tab title.
+	Title string
 	// Stdout / Stderr control which streams are captured (default: both true).
 	Stdout bool
 	Stderr bool
@@ -54,10 +57,43 @@ func New(manager *session.Manager, cfg Config, staticFS fs.FS) *Server {
 func (s *Server) Handler() http.Handler { return s.mux }
 
 func (s *Server) routes(staticFS fs.FS) {
-	s.mux.Handle("/", http.FileServer(http.FS(staticFS)))
+	s.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" || r.URL.Path == "/index.html" {
+			s.handleIndex(w, r, staticFS)
+			return
+		}
+		http.FileServer(http.FS(staticFS)).ServeHTTP(w, r)
+	})
 	s.mux.HandleFunc("/ws/", s.handleWebSocket)
 	s.mux.HandleFunc("/api/sessions", s.handleSessions)
 	s.mux.HandleFunc("/api/sessions/", s.handleSession)
+}
+
+func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request, staticFS fs.FS) {
+	f, err := staticFS.Open("index.html")
+	if err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	defer f.Close()
+
+	b, err := io.ReadAll(f)
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	html := string(b)
+	title := s.cfg.Title
+	if title == "" {
+		title = "tui-streamer"
+	}
+
+	html = strings.Replace(html, "<title>tui-streamer</title>", "<title>"+title+"</title>", 1)
+	html = strings.Replace(html, "tui-streamer\n  </div>", title+"\n  </div>", 1)
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write([]byte(html))
 }
 
 // ── WebSocket ──────────────────────────────────────────────────────────────
