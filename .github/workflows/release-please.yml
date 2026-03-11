@@ -1,0 +1,33 @@
+name: Release Please
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    name: Open / update release PR
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.rp.outputs.release_created }}
+      tag_name:        ${{ steps.rp.outputs.tag_name }}
+      version:         ${{ steps.rp.outputs.version }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: rp
+        with:
+          # Personal-access token (or fine-grained PAT) with repo + pull-request
+          # write scopes.  Create it at:
+          #   https://github.com/settings/tokens
+          # then store it as a repository secret named RELEASE_PLEASE_TOKEN.
+          # Falls back to the built-in GITHUB_TOKEN if the secret is absent,
+          # which works for public repos but may lack PR-creation rights on
+          # private repos.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
