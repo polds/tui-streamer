@@ -25,6 +25,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -150,6 +151,25 @@ func main() {
 			wv.Navigate(url)
 		})
 	}()
+
+	// Bind a function to open the native macOS file picker
+	wv.Bind("openFileDialog", func() (string, error) {
+		cmd := exec.Command("osascript", "-e", `POSIX path of (choose file with prompt "Select a bundle.json" of type {"public.json"})`)
+		out, err := cmd.Output()
+		if err != nil {
+			// user likely hit cancel
+			return "", nil
+		}
+		path := strings.TrimSpace(string(out))
+		if path == "" {
+			return "", nil
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return "", err
+		}
+		return string(content), nil
+	})
 
 	wv.Run()
 }
