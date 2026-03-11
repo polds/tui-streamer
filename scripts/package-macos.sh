@@ -80,10 +80,13 @@ chmod +x "${MACOS_DIR}/${BINARY_NAME}"
 
 # Build Info.plist from template
 PLIST_OUT="${CONTENTS}/Info.plist"
+LSUIELEMENT="true"
+[[ "$WEBVIEW_MODE" == "true" ]] && LSUIELEMENT="false"
 if [[ -f "${PLIST_TEMPLATE}" ]]; then
   sed \
     -e "s/__VERSION__/${VERSION}/g" \
     -e "s/__SHORT_VERSION__/${SHORT_VERSION}/g" \
+    -e "s/__LSUIELEMENT__/${LSUIELEMENT}/g" \
     "${PLIST_TEMPLATE}" > "${PLIST_OUT}"
 else
   # Fallback: generate a minimal Info.plist inline
@@ -112,19 +115,10 @@ else
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>LSUIElement</key>
-    <true/>
+    <${LSUIELEMENT}/>
 </dict>
 </plist>
 PLIST_EOF
-fi
-
-# In WebView mode the app shows a real window → remove LSUIElement so it appears in the Dock
-if [[ "$WEBVIEW_MODE" == "true" ]]; then
-  # Replace <key>LSUIElement</key><true/> with <false/>
-  sed -i.bak \
-    's|<key>LSUIElement</key>.*<true/>|<key>LSUIElement</key>\n    <false/>|' \
-    "${PLIST_OUT}" 2>/dev/null || true
-  rm -f "${PLIST_OUT}.bak"
 fi
 
 # Write a PkgInfo stub (required by older macOS launcher code)
