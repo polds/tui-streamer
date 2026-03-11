@@ -439,6 +439,44 @@ body {
   padding: 0 6px;
 }
 
+.bundle-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  margin-top: 6px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  background: var(--bg-panel);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  user-select: none;
+}
+.bundle-header:hover {
+  background: var(--bg-hover);
+}
+.bundle-arrow {
+  font-size: 10px;
+  color: var(--text-dim);
+  transition: transform 0.15s ease;
+  display: inline-block;
+}
+.bundle-arrow.expanded {
+  transform: rotate(90deg);
+}
+.bundle-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.session-item.bundled {
+  margin-left: 14px;
+  margin-top: 2px;
+  padding-left: 6px;
+}
+
 .session-item {
   display: flex;
   align-items: center;

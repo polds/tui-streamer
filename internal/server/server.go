@@ -3,6 +3,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/fs"
 	"log"
@@ -10,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/gorilla/websocket"
+	"github.com/polds/tui-streamer/internal/bundle"
 	"github.com/polds/tui-streamer/internal/executor"
 	"github.com/polds/tui-streamer/internal/session"
 )
@@ -33,6 +35,8 @@ type Config struct {
 	// AllowedCommands is an optional whitelist of binary names (first token of
 	// the command slice). An empty slice means all commands are permitted.
 	AllowedCommands []string
+	// HasStartupBundle indicates if a bundle was loaded on server startup.
+	HasStartupBundle bool
 }
 
 // Server wires together the session manager and HTTP mux.
@@ -67,6 +71,7 @@ func (s *Server) routes(staticFS fs.FS) {
 	s.mux.HandleFunc("/ws/", s.handleWebSocket)
 	s.mux.HandleFunc("/api/sessions", s.handleSessions)
 	s.mux.HandleFunc("/api/sessions/", s.handleSession)
+	s.mux.HandleFunc("/api/bundles", s.handleBundles)
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request, staticFS fs.FS) {
@@ -91,6 +96,10 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request, staticFS fs
 
 	html = strings.Replace(html, "<title>tui-streamer</title>", "<title>"+title+"</title>", 1)
 	html = strings.Replace(html, "tui-streamer\n  </div>", title+"\n  </div>", 1)
+
+	// Inject STARTUP_BUNDLE so the frontend knows whether to show the Import button.
+	startupBundleScript := fmt.Sprintf("<script>window.STARTUP_BUNDLE = %v;</script>", s.cfg.HasStartupBundle)
+	html = strings.Replace(html, "</head>", "  "+startupBundleScript+"\n</head>", 1)
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write([]byte(html))
@@ -132,7 +141,7 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		if req.Name == "" {
 			req.Name = "session"
 		}
-		sess := s.manager.Create(req.Name)
+		sess := s.manager.Create(req.Name, "")
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(sess.Info())
 
@@ -267,4 +276,53 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request, sess *sessio
 	}
 	w.WriteHeader(http.StatusAccepted)
 	w.Write([]byte(`{"status":"started"}`))
+}
+
+// ── REST: /api/bundles ──────────────────────────────────────────────────────
+
+func (s *Server) handleBundles(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	var b bundle.Bundle
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		http.Error(w, `{"error":"invalid JSON"}`, http.StatusBadRequest)
+		return
+	}
+
+	if b.Name == "" {
+		http.Error(w, `{"error":"bundle must have a name"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Check if the bundle name is already imported
+	for _, sess := range s.manager.List() {
+		if sess.BundleName == b.Name {
+			http.Error(w, `{"error":"bundle already imported"}`, http.StatusConflict)
+			return
+		}
+	}
+
+	// Create sessions for the imported bundle
+	for _, entry := range b.Sessions {
+		sess := s.manager.Create(entry.Name, b.Name)
+		sess.PendingCommand = entry.Command
+		if entry.Auto && entry.Command != "" {
+			opts := executor.Options{
+				Command: strings.Fields(entry.Command),
+				Dir:     s.cfg.Dir,
+				Stdout:  s.cfg.Stdout,
+				Stderr:  s.cfg.Stderr,
+			}
+			if err := sess.Exec(opts); err != nil {
+				log.Printf("bundle api: auto-exec %q: %v", entry.Name, err)
+			}
+		}
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	w.Write([]byte(`{"status":"imported"}`))
 }

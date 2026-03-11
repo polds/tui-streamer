@@ -135,6 +135,19 @@ const api = {
     });
     return r.json();
   },
+  async importBundle(file) {
+    const text = await file.text();
+    const r = await fetch('/api/bundles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: text,
+    });
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({ error: r.statusText }));
+      throw new Error(body.error || r.statusText);
+    }
+    return r.json();
+  },
   async deleteSession(id) {
     return fetch(`/api/sessions/${id}`, { method: 'DELETE' });
   },
@@ -304,10 +317,14 @@ class App {
     this.sockets     = {};   // sessionId → SessionSocket
     this.statuses    = {};   // sessionId → 'connecting'|'connected'|'disconnected'
     this.buffers     = {};   // sessionId → Line[]
+    this.expandedBundles = new Set(); // bundle names that are expanded
 
     // DOM refs
     this.$sessionList = document.getElementById('session-list');
     this.$newBtn      = document.getElementById('btn-new-session');
+    this.$importBtn   = document.getElementById('btn-import-bundle');
+    this.$bundleInput = document.getElementById('input-bundle-file');
+    this.$sidebarFn   = document.getElementById('sidebar-footer');
     this.$overlay     = document.getElementById('modal-overlay');
     this.$newForm     = document.getElementById('form-new-session');
     this.$nameInput   = document.getElementById('input-session-name');
@@ -344,6 +361,16 @@ class App {
       e.preventDefault();
       this._createSession();
     });
+
+    // Import bundle
+    if (window.STARTUP_BUNDLE) {
+      this.$importBtn.style.display = 'none';
+      this.$newBtn.style.flex = 'none';
+      this.$newBtn.style.width = '100%';
+    } else {
+      this.$importBtn.addEventListener('click', () => this.$bundleInput.click());
+      this.$bundleInput.addEventListener('change', (e) => this._importBundle(e));
+    }
 
     // Run command
     this.$runBtn.addEventListener('click', () => this._runCommand());
@@ -428,9 +455,56 @@ class App {
   _renderSidebar() {
     const prev = this.$sessionList.scrollTop;
     this.$sessionList.innerHTML = '';
+    
+    // Group sessions
+    const standalone = [];
+    const bundles = {};
     for (const s of this.sessions) {
+      if (s.bundle_name) {
+        if (!bundles[s.bundle_name]) bundles[s.bundle_name] = [];
+        bundles[s.bundle_name].push(s);
+      } else {
+        standalone.push(s);
+      }
+    }
+
+    // Render standalone sessions
+    for (const s of standalone) {
       this.$sessionList.appendChild(this._buildSessionItem(s));
     }
+
+    // Render bundled sessions
+    for (const bName of Object.keys(bundles)) {
+      const isExpanded = this.expandedBundles.has(bName);
+      
+      const header = document.createElement('div');
+      header.className = 'bundle-header';
+      header.innerHTML = `
+        <span class="bundle-arrow ${isExpanded ? 'expanded' : ''}">▶</span>
+        <span class="bundle-name" title="${this._esc(bName)}">${this._esc(bName)}</span>
+      `;
+      header.addEventListener('click', () => {
+        if (this.expandedBundles.has(bName)) {
+          this.expandedBundles.delete(bName);
+        } else {
+          this.expandedBundles.add(bName);
+        }
+        this._renderSidebar();
+      });
+      this.$sessionList.appendChild(header);
+
+      if (isExpanded) {
+        const container = document.createElement('div');
+        container.className = 'bundle-container';
+        for (const s of bundles[bName]) {
+          const item = this._buildSessionItem(s);
+          item.classList.add('bundled');
+          container.appendChild(item);
+        }
+        this.$sessionList.appendChild(container);
+      }
+    }
+
     this.$sessionList.scrollTop = prev;
   }
 
@@ -583,6 +657,22 @@ class App {
       this._selectSession(s.id);
     } catch (e) {
       alert('Failed to create session: ' + e.message);
+    }
+  }
+
+  async _importBundle(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    // Reset input so importing the same file again triggers change event
+    e.target.value = '';
+    
+    try {
+      await api.importBundle(file);
+      // Let the _refresh loop naturally pull the new sessions, but we can fast-track
+      this._refresh();
+    } catch (err) {
+      alert(`Failed to import bundle:\n\n${err.message}`);
     }
   }
 

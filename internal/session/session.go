@@ -24,6 +24,8 @@ type Session struct {
 	// bundle. It is surfaced to the UI so the command bar can be pre-populated.
 	// An empty string means no pending command.
 	PendingCommand string    `json:"pending_command,omitempty"`
+	// BundleName is the name of the bundle this session belongs to, if any.
+	BundleName     string    `json:"bundle_name,omitempty"`
 
 	mu      sync.RWMutex
 	clients map[*Client]struct{}
@@ -40,14 +42,16 @@ type Info struct {
 	Running        bool      `json:"running"`
 	ClientCount    int       `json:"client_count"`
 	PendingCommand string    `json:"pending_command,omitempty"`
+	BundleName     string    `json:"bundle_name,omitempty"`
 }
 
-func newSession(id, name string) *Session {
+func newSession(id, name, bundleName string) *Session {
 	return &Session{
-		ID:        id,
-		Name:      name,
-		CreatedAt: time.Now(),
-		clients:   make(map[*Client]struct{}),
+		ID:         id,
+		Name:       name,
+		BundleName: bundleName,
+		CreatedAt:  time.Now(),
+		clients:    make(map[*Client]struct{}),
 	}
 }
 
@@ -62,6 +66,7 @@ func (s *Session) Info() Info {
 		Running:        s.running,
 		ClientCount:    len(s.clients),
 		PendingCommand: s.PendingCommand,
+		BundleName:     s.BundleName,
 	}
 }
 

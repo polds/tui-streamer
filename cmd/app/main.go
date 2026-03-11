@@ -91,7 +91,7 @@ func main() {
 	if b != nil {
 		log.Printf("bundle %q: loading %d session(s)", b.Name, len(b.Sessions))
 		for _, entry := range b.Sessions {
-			sess := manager.Create(entry.Name)
+			sess := manager.Create(entry.Name, b.Name)
 			sess.PendingCommand = entry.Command
 			if entry.Auto && entry.Command != "" {
 				opts := executor.Options{
@@ -117,6 +117,7 @@ func main() {
 		Stderr:          true,
 		Dir:             *dir,
 		AllowedCommands: []string(allowed),
+		HasStartupBundle: b != nil,
 	}
 
 	srv := server.New(manager, cfg, staticFS)
