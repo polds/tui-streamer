@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/polds/tui-streamer/internal/browser"
+	"github.com/polds/tui-streamer/internal/bundle"
+	"github.com/polds/tui-streamer/internal/executor"
 	"github.com/polds/tui-streamer/internal/server"
 	"github.com/polds/tui-streamer/internal/session"
 	"github.com/polds/tui-streamer/web"
@@ -39,6 +41,8 @@ func main() {
 	var allowed multiFlag
 	flag.Var(&allowed, "allow", "whitelist a binary name (repeat for multiple);\n\t\tomit to allow all commands")
 
+	bundlePath := flag.String("bundle", "", "path to a JSON bundle file that pre-creates sessions with\n\t\toptional auto-execution (see docs for format)")
+
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: tui-streamer [flags]\n\nFlags:\n")
 		flag.PrintDefaults()
@@ -48,6 +52,7 @@ Examples:
   tui-streamer -port 3000 -dir /app     # custom port and working dir
   tui-streamer -allow make -allow npm   # whitelist specific binaries
   tui-streamer -open                    # launch browser automatically
+  tui-streamer -bundle runbook.json     # load a pre-configured session bundle
 `)
 	}
 	flag.Parse()
@@ -75,6 +80,34 @@ Examples:
 		log.Printf("allowed commands: %s", strings.Join(allowed, ", "))
 	} else {
 		log.Printf("all commands allowed (use -allow to restrict)")
+	}
+
+	// Load bundle if requested, creating sessions before the server starts.
+	if *bundlePath != "" {
+		b, err := bundle.Load(*bundlePath)
+		if err != nil {
+			log.Fatalf("bundle: %v", err)
+		}
+		log.Printf("bundle %q: loading %d session(s)", b.Name, len(b.Sessions))
+		for _, entry := range b.Sessions {
+			sess := manager.Create(entry.Name)
+			sess.PendingCommand = entry.Command
+			if entry.Auto && entry.Command != "" {
+				opts := executor.Options{
+					Command: strings.Fields(entry.Command),
+					Dir:     *dir,
+					Stdout:  *stdout,
+					Stderr:  *stderr,
+				}
+				if err := sess.Exec(opts); err != nil {
+					log.Printf("bundle: auto-exec %q: %v", entry.Name, err)
+				} else {
+					log.Printf("bundle: auto-exec %q: started", entry.Name)
+				}
+			} else {
+				log.Printf("bundle: created %q (manual execution)", entry.Name)
+			}
+		}
 	}
 
 	if *open {
