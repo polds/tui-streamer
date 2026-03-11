@@ -318,6 +318,7 @@ class App {
     this.$connDot     = document.getElementById('conn-dot');
     this.$connLabel   = document.getElementById('conn-label');
     this.$termOutput  = document.getElementById('terminal-output');
+    this.$termHint    = document.getElementById('terminal-hint');
     this.$cmdInput    = document.getElementById('cmd-input');
     this.$runBtn      = document.getElementById('btn-run');
     this.$clearBtn    = document.getElementById('btn-clear');
@@ -392,6 +393,10 @@ class App {
         this.buffers[sessionId].push(msg);
         if (this.activeId === sessionId) {
           this.terminal.append(msg);
+          // Dismiss the hint the moment the first output line arrives.
+          if (!this.$termHint.classList.contains('hidden')) {
+            this._updateTerminalHint(sessionId);
+          }
         }
         // Update running state in sidebar
         if (msg.type === 'start' || msg.type === 'exit') {
@@ -476,13 +481,82 @@ class App {
       this.terminal.append(msg);
     }
 
-    // Pre-populate command input from bundle pending_command if the input is empty
-    // or if it still holds the previous session's pending command.
+    // Pre-populate command input from bundle pending_command.
     this.$cmdInput.value = s.pending_command || '';
 
+    this._updateTerminalHint(id);
     this._updateConnBadge(this.statuses[id] || 'disconnected');
     this._renderSidebar();
     this.$cmdInput.focus();
+  }
+
+  // Show a helpful overlay when the terminal has no output yet.
+  // Two variants: pending-command (bundle session) and new-session (example chips).
+  _updateTerminalHint(id) {
+    const s = this.sessions.find(s => s.id === id);
+    const hasOutput = this.buffers[id] && this.buffers[id].length > 0;
+
+    if (!s || hasOutput) {
+      this.$termHint.classList.add('hidden');
+      this.$termOutput.classList.remove('hidden');
+      return;
+    }
+
+    this.$termOutput.classList.add('hidden');
+    this.$termHint.classList.remove('hidden');
+
+    const icon = `<svg class="hint-icon" width="40" height="40" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>
+    </svg>`;
+
+    if (s.pending_command) {
+      this.$termHint.innerHTML = `
+        ${icon}
+        <p class="hint-heading">Ready to run</p>
+        <p class="hint-sub">This session has a pre-configured command</p>
+        <code class="hint-cmd-preview">${this._esc(s.pending_command)}</code>
+        <button class="btn btn-success" style="padding:7px 20px;font-size:13px"
+                onclick="window.__app._runFromHint()">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M11.596 8.697l-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393z"/>
+          </svg>
+          Run Command
+        </button>`;
+    } else {
+      const examples = [
+        'echo "Hello, World!"',
+        'ls -la',
+        'date',
+        'uptime',
+        'curl -s ipinfo.io/ip',
+      ];
+      const chips = examples.map(cmd =>
+        `<button class="hint-chip"
+                 onclick="window.__app._runExampleCmd(${JSON.stringify(cmd)})"
+                 title="Run: ${this._esc(cmd)}">${this._esc(cmd)}</button>`
+      ).join('');
+      this.$termHint.innerHTML = `
+        ${icon}
+        <p class="hint-heading">Nothing running yet</p>
+        <p class="hint-sub">Just want to try it out? Run one of these:</p>
+        <div class="hint-examples">${chips}</div>`;
+    }
+  }
+
+  // Called by the "Run Command" button in the pending-command hint.
+  _runFromHint() {
+    const s = this.sessions.find(s => s.id === this.activeId);
+    if (s && s.pending_command) {
+      this.$cmdInput.value = s.pending_command;
+      this._runCommand();
+    }
+  }
+
+  // Called when the user clicks an example chip — fills the input and runs immediately.
+  _runExampleCmd(cmd) {
+    this.$cmdInput.value = cmd;
+    this._runCommand();
   }
 
   _updateConnBadge(status) {
@@ -516,6 +590,9 @@ class App {
       this.activeId = null;
       this.$emptyState.classList.remove('hidden');
       this.$termPanel.classList.add('hidden');
+      // Reset output/hint visibility for next session selection.
+      this.$termOutput.classList.remove('hidden');
+      this.$termHint.classList.add('hidden');
     }
     this._renderSidebar();
   }
