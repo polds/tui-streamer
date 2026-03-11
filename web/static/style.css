@@ -494,7 +494,7 @@ body {
 .session-item:hover .session-actions { display: flex; }
 
 .sidebar-footer {
-  padding: 8px 10px;
+  padding: 10px;
   border-top: 1px solid var(--border);
 }
 
