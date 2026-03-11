@@ -191,7 +191,7 @@ class SessionSocket {
     ws.addEventListener('close', () => {
       this.onStatusChange('disconnected');
       if (!this._closed) {
-        this._reconnectTimer = setTimeout(() => this.connect(), 2000);
+        this._reconnectTimer = setTimeout(() => this.connect(), 500);
       }
     });
 
@@ -356,6 +356,14 @@ class App {
     this.$scrollBtn.addEventListener('click', () => this._toggleScroll());
     this.$killBtn.addEventListener('click',   () => this._killActive());
 
+    // Hint chip / run-button delegation (innerHTML is replaced on each call,
+    // so we delegate on the container itself which persists).
+    this.$termHint.addEventListener('click', (e) => {
+      const chip = e.target.closest('.hint-chip');
+      if (chip) { this._runExampleCmd(chip.dataset.cmd); return; }
+      if (e.target.closest('[data-action="run-hint"]')) this._runFromHint();
+    });
+
     // Theme
     this.$themeSelect.addEventListener('change', () => {
       const t = this.$themeSelect.value;
@@ -517,7 +525,7 @@ class App {
         <p class="hint-sub">This session has a pre-configured command</p>
         <code class="hint-cmd-preview">${this._esc(s.pending_command)}</code>
         <button class="btn btn-success" style="padding:7px 20px;font-size:13px"
-                onclick="window.__app._runFromHint()">
+                data-action="run-hint">
           <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
             <path d="M11.596 8.697l-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393z"/>
           </svg>
@@ -532,8 +540,7 @@ class App {
         'curl -s ipinfo.io/ip',
       ];
       const chips = examples.map(cmd =>
-        `<button class="hint-chip"
-                 onclick="window.__app._runExampleCmd(${JSON.stringify(cmd)})"
+        `<button class="hint-chip" data-cmd="${this._esc(cmd)}"
                  title="Run: ${this._esc(cmd)}">${this._esc(cmd)}</button>`
       ).join('');
       this.$termHint.innerHTML = `
