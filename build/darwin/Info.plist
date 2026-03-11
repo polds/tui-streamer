@@ -45,7 +45,7 @@
          in server-only mode (no WebView window). Remove or set to
          false when building with --webview to show a Dock icon. -->
     <key>LSUIElement</key>
-    <true/>
+    <__LSUIELEMENT__/>
 
     <!-- ── Privacy descriptions (needed if accessing network) ────────── -->
     <key>NSLocalNetworkUsageDescription</key>

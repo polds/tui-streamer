@@ -9,7 +9,7 @@ DMG_PATH    := $(BUILD_DIR)/$(APP_NAME)-$(VERSION).dmg
 LDFLAGS := -ldflags "-X main.version=$(VERSION) -s -w"
 
 .PHONY: all build build-darwin build-darwin-arm64 build-darwin-amd64 \
-        app dmg clean test lint
+        build-darwin-webview app app-webview dmg clean test lint
 
 all: build
 
@@ -46,12 +46,18 @@ app: _require-darwin-binary
 		--version  "$(VERSION)" \
 		--out-dir  "$(BUILD_DIR)"
 
+## build-darwin-webview: build the WKWebView binary (macOS + Xcode required, CGO enabled)
+build-darwin-webview:
+	mkdir -p $(BUILD_DIR)
+	CGO_ENABLED=1 GOOS=darwin go build $(LDFLAGS) \
+		-o $(BUILD_DIR)/$(BINARY_NAME)-darwin-webview ./cmd/app
+
 ## app-webview: build .app with embedded WKWebView window (darwin only)
 ##              Requires macOS + Xcode command-line tools.
-app-webview:
+app-webview: build-darwin-webview
 	@echo "Building WebView .app bundle → $(APP_BUNDLE)"
 	@bash scripts/package-macos.sh \
-		--binary   "$(BUILD_DIR)/$(BINARY_NAME)-darwin-universal" \
+		--binary   "$(BUILD_DIR)/$(BINARY_NAME)-darwin-webview" \
 		--name     "$(APP_NAME)" \
 		--version  "$(VERSION)" \
 		--out-dir  "$(BUILD_DIR)" \
