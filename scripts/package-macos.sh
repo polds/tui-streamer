@@ -121,6 +121,16 @@ else
 PLIST_EOF
 fi
 
+# Copy app icon if it has been generated (see 'make icon' / scripts/make-icon.sh)
+ICON_SRC="build/darwin/AppIcon.icns"
+if [[ -f "${ICON_SRC}" ]]; then
+  cp "${ICON_SRC}" "${RESOURCES_DIR}/AppIcon.icns"
+  echo "  ✓ App icon bundled"
+else
+  echo "  ⚠ No AppIcon.icns found – run 'make icon' on macOS to generate one"
+  echo "    (brew install librsvg, then: make icon)"
+fi
+
 # Write a PkgInfo stub (required by older macOS launcher code)
 printf 'APPL????' > "${CONTENTS}/PkgInfo"
 
