@@ -76,7 +76,7 @@ Examples:
 		}
 		log.Printf("bundle %q: loading %d session(s)", b.Name, len(b.Sessions))
 		for _, entry := range b.Sessions {
-			sess := manager.Create(entry.Name)
+			sess := manager.Create(entry.Name, b.Name)
 			sess.PendingCommand = entry.Command
 			if entry.Auto && entry.Command != "" {
 				opts := executor.Options{
@@ -101,11 +101,12 @@ Examples:
 	}
 
 	cfg := server.Config{
-		Title:           *title,
-		Stdout:          *stdout,
-		Stderr:          *stderr,
-		Dir:             *dir,
-		AllowedCommands: []string(allowed),
+		Title:            *title,
+		Stdout:           *stdout,
+		Stderr:           *stderr,
+		Dir:              *dir,
+		AllowedCommands:  []string(allowed),
+		HasStartupBundle: *bundlePath != "",
 	}
 
 	srv := server.New(manager, cfg, staticFS)

@@ -19,11 +19,11 @@ func NewManager() *Manager {
 	return &Manager{sessions: make(map[string]*Session)}
 }
 
-// Create allocates a new session with the given display name.
-func (m *Manager) Create(name string) *Session {
+// Create allocates a new session with the given display name and optional bundleName.
+func (m *Manager) Create(name, bundleName string) *Session {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	s := newSession(uuid.New().String(), name)
+	s := newSession(uuid.New().String(), name, bundleName)
 	m.sessions[s.ID] = s
 	return s
 }
