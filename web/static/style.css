@@ -606,8 +606,10 @@ body {
   display: flex;
   gap: 10px;
   min-height: 20px;
+  cursor: text;
 }
 
+.terminal-line.selected { background: var(--bg-active); border-radius: 3px; }
 .terminal-line:hover { background: var(--bg-hover); border-radius: 3px; }
 
 .line-ts {
@@ -729,6 +731,30 @@ body {
   color: #fff;
 }
 
+/* ── Selection Prompt ─────────────────────────────────────────── */
+.sel-prompt {
+  position: absolute;
+  bottom: 60px; /* Above cmd-bar */
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  z-index: 50;
+}
+
+#sel-count {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
 /* ── Command bar ──────────────────────────────────────────────── */
 .cmd-bar {
   border-top: 1px solid var(--border);
@@ -806,6 +832,14 @@ body {
   font-weight: 500;
 }
 .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+
+.btn-secondary {
+  background: var(--bg-hover);
+  border-color: var(--border);
+  color: var(--text);
+  font-weight: 500;
+}
+.btn-secondary:hover { background: var(--bg-active); border-color: var(--text-dim); }
 
 .btn-success {
   background: color-mix(in srgb, var(--success) 15%, transparent);
