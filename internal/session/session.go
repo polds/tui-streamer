@@ -10,6 +10,10 @@ import (
 	"github.com/polds/tui-streamer/internal/executor"
 )
 
+// maxLineBuf is the maximum number of output lines retained for replay to
+// clients that connect after execution has already started.
+const maxLineBuf = 10_000
+
 // Session is a named execution context. Multiple WebSocket clients can
 // subscribe and all receive the same streamed output from any executed command.
 type Session struct {
@@ -21,6 +25,7 @@ type Session struct {
 	clients map[*Client]struct{}
 	running bool
 	cancel  context.CancelFunc
+	lineBuf [][]byte // buffered output lines replayed to late-joining clients
 }
 
 // Info is a JSON-safe snapshot of the session's current state.
@@ -65,6 +70,7 @@ func (s *Session) Exec(opts executor.Options) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
 	s.running = true
+	s.lineBuf = nil // clear replay buffer for the new command
 	s.mu.Unlock()
 
 	lines, err := executor.Run(ctx, opts)
@@ -110,6 +116,10 @@ func (s *Session) subscribe(c *Client) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.clients[c] = struct{}{}
+	// Replay buffered lines so late-joining clients see prior output.
+	for _, line := range s.lineBuf {
+		c.Send(line)
+	}
 }
 
 func (s *Session) unsubscribe(c *Client) {
@@ -119,8 +129,11 @@ func (s *Session) unsubscribe(c *Client) {
 }
 
 func (s *Session) broadcast(msg []byte) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.lineBuf) < maxLineBuf {
+		s.lineBuf = append(s.lineBuf, msg)
+	}
 	for c := range s.clients {
 		c.Send(msg)
 	}

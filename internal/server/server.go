@@ -163,17 +163,31 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request, sess *sessio
 	}
 
 	var req struct {
-		Command []string `json:"command"`
-		Dir     string   `json:"dir"`
-		Env     []string `json:"env"`
-		Stdout  *bool    `json:"stdout"`
-		Stderr  *bool    `json:"stderr"`
+		Command json.RawMessage `json:"command"`
+		Dir     string          `json:"dir"`
+		Env     []string        `json:"env"`
+		Stdout  *bool           `json:"stdout"`
+		Stderr  *bool           `json:"stderr"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"invalid JSON"}`, http.StatusBadRequest)
 		return
 	}
-	if len(req.Command) == 0 {
+
+	// Accept command as either a JSON array (["cmd","arg"]) or a plain string
+	// ("cmd arg") which is split on whitespace.
+	var command []string
+	if len(req.Command) > 0 {
+		if err := json.Unmarshal(req.Command, &command); err != nil {
+			var s string
+			if err2 := json.Unmarshal(req.Command, &s); err2 != nil {
+				http.Error(w, `{"error":"command must be a string or array of strings"}`, http.StatusBadRequest)
+				return
+			}
+			command = strings.Fields(s)
+		}
+	}
+	if len(command) == 0 {
 		http.Error(w, `{"error":"command is required"}`, http.StatusBadRequest)
 		return
 	}
@@ -182,7 +196,7 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request, sess *sessio
 	if len(s.cfg.AllowedCommands) > 0 {
 		allowed := false
 		for _, a := range s.cfg.AllowedCommands {
-			if a == req.Command[0] {
+			if a == command[0] {
 				allowed = true
 				break
 			}
@@ -194,7 +208,7 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request, sess *sessio
 	}
 
 	opts := executor.Options{
-		Command: req.Command,
+		Command: command,
 		Dir:     req.Dir,
 		Env:     req.Env,
 		Stdout:  s.cfg.Stdout,
