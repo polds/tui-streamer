@@ -8,3 +8,4 @@ tui-streamer-*
 *.test
 *.out
 coverage.html
+/.DS_Store
