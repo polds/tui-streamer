@@ -2,6 +2,7 @@ package session
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 
 	"github.com/google/uuid"
@@ -35,7 +36,8 @@ func (m *Manager) Get(id string) (*Session, bool) {
 	return s, ok
 }
 
-// List returns Info snapshots for all active sessions.
+// List returns Info snapshots for all active sessions, sorted by creation time
+// (oldest first) so the order is stable across concurrent map iterations.
 func (m *Manager) List() []Info {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -43,6 +45,9 @@ func (m *Manager) List() []Info {
 	for _, s := range m.sessions {
 		list = append(list, s.Info())
 	}
+	sort.Slice(list, func(i, j int) bool {
+		return list[i].CreatedAt.Before(list[j].CreatedAt)
+	})
 	return list
 }
 

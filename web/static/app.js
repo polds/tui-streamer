@@ -372,6 +372,7 @@ class App {
   async _refresh() {
     try {
       this.sessions = await api.listSessions();
+      this.sessions.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
     } catch { this.sessions = []; }
     this._renderSidebar();
     // Subscribe to any sessions we don't have sockets for yet
