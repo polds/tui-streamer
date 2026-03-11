@@ -25,11 +25,14 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	webview "github.com/webview/webview_go"
 
+	"github.com/polds/tui-streamer/internal/bundle"
+	"github.com/polds/tui-streamer/internal/executor"
 	"github.com/polds/tui-streamer/internal/server"
 	"github.com/polds/tui-streamer/internal/session"
 	"github.com/polds/tui-streamer/web"
@@ -42,9 +45,21 @@ func (f *multiFlag) String() string     { return strings.Join(*f, ", ") }
 func (f *multiFlag) Set(v string) error { *f = append(*f, v); return nil }
 
 func main() {
+	defaultTitle := "TUI Streamer"
+	bundlePath := getBundlePath()
+	var b *bundle.Bundle
+	if bundlePath != "" {
+		if loaded, err := bundle.Load(bundlePath); err == nil {
+			b = loaded
+			if b.Name != "" {
+				defaultTitle = b.Name
+			}
+		}
+	}
+
 	port  := flag.String("port",  "0",            "TCP port to listen on (0 = random free port)")
 	dir   := flag.String("dir",   ".",             "default working directory for commands")
-	title := flag.String("title", "TUI Streamer",  "window title")
+	title := flag.String("title", defaultTitle,  "window title")
 	debug := flag.Bool("debug",   false,            "enable WKWebView inspector / DevTools")
 
 	var allowed multiFlag
@@ -72,7 +87,32 @@ func main() {
 	}
 
 	manager := session.NewManager()
+
+	if b != nil {
+		log.Printf("bundle %q: loading %d session(s)", b.Name, len(b.Sessions))
+		for _, entry := range b.Sessions {
+			sess := manager.Create(entry.Name)
+			sess.PendingCommand = entry.Command
+			if entry.Auto && entry.Command != "" {
+				opts := executor.Options{
+					Command: strings.Fields(entry.Command),
+					Dir:     *dir,
+					Stdout:  true,
+					Stderr:  true,
+				}
+				if err := sess.Exec(opts); err != nil {
+					log.Printf("bundle: auto-exec %q: %v", entry.Name, err)
+				} else {
+					log.Printf("bundle: auto-exec %q: started", entry.Name)
+				}
+			} else {
+				log.Printf("bundle: created %q (manual execution)", entry.Name)
+			}
+		}
+	}
+
 	cfg := server.Config{
+		Title:           *title,
 		Stdout:          true,
 		Stderr:          true,
 		Dir:             *dir,
@@ -100,7 +140,7 @@ func main() {
 
 	// Show a loading splash immediately so the user has feedback while the
 	// HTTP server finishes binding its socket.
-	wv.SetHtml(splashHTML())
+	wv.SetHtml(splashHTML(*title))
 
 	// Once the server is ready, navigate to it on the main (UI) thread.
 	go func() {
@@ -130,8 +170,8 @@ func waitForServer(url string, timeout time.Duration) {
 // splashHTML returns an inline HTML page that is displayed in the WKWebView
 // window while the embedded HTTP server is starting up.  It intentionally
 // matches the app's default dark terminal theme so the transition is seamless.
-func splashHTML() string {
-	return `<!DOCTYPE html>
+func splashHTML(title string) string {
+	html := `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -203,8 +243,25 @@ func splashHTML() string {
 </head>
 <body>
   <div class="logo">&gt;<span class="cursor">_</span></div>
-  <div class="label">TUI Streamer &mdash; Starting&hellip;</div>
+  <div class="label">{{TITLE}} &mdash; Starting&hellip;</div>
   <div class="progress"><div class="progress-bar"></div></div>
 </body>
 </html>`
+	return strings.Replace(html, "{{TITLE}}", title, 1)
+}
+
+// getBundlePath returns the path to a bundle.json file packaged inside
+// the .app bundle. If found, it returns the absolute path.
+func getBundlePath() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	resourcesDir := filepath.Join(filepath.Dir(exe), "../Resources")
+	bundlePath := filepath.Join(resourcesDir, "bundle.json")
+
+	if _, err := os.Stat(bundlePath); err == nil {
+		return bundlePath
+	}
+	return ""
 }

@@ -30,6 +30,7 @@ func (f *multiFlag) Set(v string) error { *f = append(*f, v); return nil }
 
 func main() {
 	port   := flag.String("port", "8080", "TCP port to listen on")
+	title  := flag.String("title", "",    "window title (defaults to tui-streamer or bundle name)")
 	dir    := flag.String("dir",  ".",    "default working directory for commands")
 	stdout := flag.Bool("stdout", true,  "capture stdout (default true)")
 	stderr := flag.Bool("stderr", true,  "capture stderr (default true)")
@@ -64,29 +65,14 @@ Examples:
 	}
 
 	manager := session.NewManager()
-	cfg := server.Config{
-		Stdout:          *stdout,
-		Stderr:          *stderr,
-		Dir:             *dir,
-		AllowedCommands: []string(allowed),
-	}
-
-	srv := server.New(manager, cfg, staticFS)
-
-	addr := ":" + *port
-	url := "http://localhost" + addr
-	log.Printf("tui-streamer %s listening on %s", version, url)
-	if len(allowed) > 0 {
-		log.Printf("allowed commands: %s", strings.Join(allowed, ", "))
-	} else {
-		log.Printf("all commands allowed (use -allow to restrict)")
-	}
-
 	// Load bundle if requested, creating sessions before the server starts.
 	if *bundlePath != "" {
 		b, err := bundle.Load(*bundlePath)
 		if err != nil {
 			log.Fatalf("bundle: %v", err)
+		}
+		if *title == "" && b.Name != "" {
+			*title = b.Name
 		}
 		log.Printf("bundle %q: loading %d session(s)", b.Name, len(b.Sessions))
 		for _, entry := range b.Sessions {
@@ -109,6 +95,31 @@ Examples:
 			}
 		}
 	}
+
+	if *title == "" {
+		*title = "TUI Streamer"
+	}
+
+	cfg := server.Config{
+		Title:           *title,
+		Stdout:          *stdout,
+		Stderr:          *stderr,
+		Dir:             *dir,
+		AllowedCommands: []string(allowed),
+	}
+
+	srv := server.New(manager, cfg, staticFS)
+
+	addr := ":" + *port
+	url := "http://localhost" + addr
+	log.Printf("tui-streamer %s listening on %s", version, url)
+	if len(allowed) > 0 {
+		log.Printf("allowed commands: %s", strings.Join(allowed, ", "))
+	} else {
+		log.Printf("all commands allowed (use -allow to restrict)")
+	}
+
+
 
 	if *open {
 		// Give the HTTP listener a moment to bind before opening the browser.

@@ -9,3 +9,4 @@ tui-streamer-*
 *.out
 coverage.html
 /.DS_Store
+/build/darwin/AppIcon.icns
