@@ -17,6 +17,9 @@ import (
 	"github.com/polds/tui-streamer/web"
 )
 
+// version is set at build time via -ldflags "-X main.version=<tag>".
+var version = "dev"
+
 // multiFlag allows a flag to be specified more than once.
 type multiFlag []string
 
@@ -65,7 +68,7 @@ Examples:
 
 	addr := ":" + *port
 	url := "http://localhost" + addr
-	log.Printf("tui-streamer listening on %s", url)
+	log.Printf("tui-streamer %s listening on %s", version, url)
 	if len(allowed) > 0 {
 		log.Printf("allowed commands: %s", strings.Join(allowed, ", "))
 	} else {

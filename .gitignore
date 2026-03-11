@@ -1,6 +1,6 @@
 # Compiled binaries
 dist/
-server
+/server
 tui-streamer
 tui-streamer-*
 
