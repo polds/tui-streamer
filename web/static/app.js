@@ -382,7 +382,21 @@ class App {
       this.$newBtn.style.flex = 'none';
       this.$newBtn.style.width = '100%';
     } else {
-      this.$importBtn.addEventListener('click', () => this.$bundleInput.click());
+      this.$importBtn.addEventListener('click', async () => {
+        if (window.openFileDialog) {
+          try {
+            const content = await window.openFileDialog();
+            if (!content) return; // user cancelled
+            const file = new File([content], "bundle.json", { type: "application/json" });
+            await api.importBundle(file);
+            this._refresh();
+          } catch (err) {
+            this._uiAlert(`Failed to import bundle from dialog:\n\n${err.message}`);
+          }
+        } else {
+          this.$bundleInput.click();
+        }
+      });
       this.$bundleInput.addEventListener('change', (e) => this._importBundle(e));
     }
 
@@ -416,6 +430,30 @@ class App {
       const t = this.$themeSelect.value;
       document.documentElement.setAttribute('data-theme', t === 'dark' ? '' : t);
       localStorage.setItem('tui-theme', t);
+    });
+
+    // Global keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (e.metaKey || e.ctrlKey) {
+        if (e.key.toLowerCase() === 'u' && !e.shiftKey && !e.altKey) {
+          e.preventDefault();
+          this._showModal();
+        } else if (e.key.toLowerCase() === 'o' && !e.shiftKey && !e.altKey) {
+          if (!window.STARTUP_BUNDLE) {
+            e.preventDefault();
+            if (window.openFileDialog) {
+              this.$importBtn.click(); // Trigger the logic that uses openFileDialog
+            } else {
+              this.$bundleInput.click();
+            }
+          }
+        } else if (e.key.toLowerCase() === 'c' && e.shiftKey && !e.altKey) {
+          if (this.activeId && !this.$termPanel.classList.contains('hidden')) {
+            e.preventDefault();
+            this._copyAllOutput();
+          }
+        }
+      }
     });
   }
 
@@ -678,7 +716,7 @@ class App {
       this._renderSidebar();
       this._selectSession(s.id);
     } catch (e) {
-      alert('Failed to create session: ' + e.message);
+      this._uiAlert('Failed to create session: ' + e.message);
     }
   }
 
@@ -694,12 +732,12 @@ class App {
       // Let the _refresh loop naturally pull the new sessions, but we can fast-track
       this._refresh();
     } catch (err) {
-      alert(`Failed to import bundle:\n\n${err.message}`);
+      this._uiAlert(`Failed to import bundle:\n\n${err.message}`);
     }
   }
 
   async _deleteSession(id) {
-    if (!confirm('Delete this session?')) return;
+    if (!(await this._uiConfirm('Delete this session?'))) return;
     await api.deleteSession(id);
     if (this.sockets[id]) { this.sockets[id].destroy(); delete this.sockets[id]; }
     delete this.buffers[id];
@@ -831,7 +869,7 @@ class App {
       this.$selCopyBtn.textContent = 'Copied!';
       setTimeout(() => this.$selCopyBtn.textContent = orig, 1500);
     } catch {
-      alert('Failed to copy to clipboard');
+      this._uiAlert('Failed to copy to clipboard');
     }
   }
 
@@ -850,7 +888,7 @@ class App {
         setTimeout(() => btn.innerHTML = origHtml, 1500);
       }
     } catch {
-      alert('Failed to copy to clipboard');
+      this._uiAlert('Failed to copy to clipboard');
     }
   }
 
@@ -885,6 +923,101 @@ class App {
   _esc(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
                     .replace(/"/g,'&quot;');
+  }
+
+  // Custom UI Dialogs to replace native alert() and confirm() which don't work well in App mode
+  _uiAlert(message) {
+    return new Promise((resolve) => {
+      const overlay = document.createElement('div');
+      overlay.className = 'overlay';
+      overlay.style.zIndex = '9999';
+      
+      const modal = document.createElement('div');
+      modal.className = 'modal';
+      modal.innerHTML = `
+        <h3 style="margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="var(--danger)"><path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8zm9-.25v.317c0 .417-.293.811-.716.956C7.38 9.214 7 9.614 7 10.25v.75a.75.75 0 0 0 1.5 0v-.316c.721-.166 1.5-.747 1.5-1.934v-.317a.75.75 0 0 0-1.5 0zM9 12.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg>
+          Alert
+        </h3>
+        <p style="margin-bottom:20px;line-height:1.4;white-space:pre-wrap;word-break:break-word;">${this._esc(message)}</p>
+        <div class="modal-actions">
+          <button class="btn btn-primary" id="ui-alert-ok">OK</button>
+        </div>
+      `;
+      overlay.appendChild(modal);
+      document.body.appendChild(overlay);
+
+      const cleanup = () => {
+        document.body.removeChild(overlay);
+        resolve();
+      };
+
+      modal.querySelector('#ui-alert-ok').addEventListener('click', cleanup);
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) cleanup();
+      });
+      
+      // Auto-focus OK button
+      setTimeout(() => modal.querySelector('#ui-alert-ok').focus(), 10);
+      
+      // Handle Enter/Escape
+      const keyHandler = (e) => {
+        if (e.key === 'Enter' || e.key === 'Escape') {
+          e.preventDefault();
+          document.removeEventListener('keydown', keyHandler);
+          cleanup();
+        }
+      };
+      document.addEventListener('keydown', keyHandler);
+    });
+  }
+
+  _uiConfirm(message) {
+    return new Promise((resolve) => {
+      const overlay = document.createElement('div');
+      overlay.className = 'overlay';
+      overlay.style.zIndex = '9999';
+      
+      const modal = document.createElement('div');
+      modal.className = 'modal';
+      modal.innerHTML = `
+        <h3 style="margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="var(--primary)"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/><path d="M7.002 11a1 1 0 1 1 2 0 1 1 0 0 1-2 0zM7.1 4.995a.905.905 0 1 1 1.8 0l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 4.995z"/></svg>
+          Confirm
+        </h3>
+        <p style="margin-bottom:20px;line-height:1.4;white-space:pre-wrap;word-break:break-word;">${this._esc(message)}</p>
+        <div class="modal-actions">
+          <button class="btn" id="ui-confirm-cancel">Cancel</button>
+          <button class="btn btn-primary" id="ui-confirm-ok">OK</button>
+        </div>
+      `;
+      overlay.appendChild(modal);
+      document.body.appendChild(overlay);
+
+      const cleanup = (result) => {
+        document.body.removeChild(overlay);
+        resolve(result);
+      };
+
+      modal.querySelector('#ui-confirm-ok').addEventListener('click', () => cleanup(true));
+      modal.querySelector('#ui-confirm-cancel').addEventListener('click', () => cleanup(false));
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) cleanup(false);
+      });
+      
+      // Auto-focus Cancel button by default
+      setTimeout(() => modal.querySelector('#ui-confirm-cancel').focus(), 10);
+      
+      // Handle Escape
+      const keyHandler = (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          document.removeEventListener('keydown', keyHandler);
+          cleanup(false);
+        }
+      };
+      document.addEventListener('keydown', keyHandler);
+    });
   }
 }
 
