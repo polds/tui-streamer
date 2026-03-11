@@ -373,7 +373,7 @@ class App {
   }
 
   _loadTheme() {
-    const t = localStorage.getItem('tui-theme') || 'dark';
+    const t = localStorage.getItem('tui-theme') || 'catppuccin-macchiato';
     this.$themeSelect.value = t;
     document.documentElement.setAttribute('data-theme', t === 'dark' ? '' : t);
   }
