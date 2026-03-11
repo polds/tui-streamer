@@ -1,0 +1,224 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  validate-tag:
+    name: Validate Tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Parse tag
+        id: tag
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          echo "version=${TAG}" >> "$GITHUB_OUTPUT"
+          # Treat tags with -alpha, -beta, -rc as pre-releases
+          if echo "${TAG}" | grep -qE '-(alpha|beta|rc)'; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  test:
+    name: Test before release
+    runs-on: ubuntu-latest
+    needs: validate-tag
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run tests
+        run: go test -v -race -count=1 -timeout=120s ./...
+
+      - name: Lint
+        run: go vet ./...
+
+  build:
+    name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ubuntu-latest
+    needs: [validate-tag, test]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            asset_suffix: linux-amd64
+          - goos: linux
+            goarch: arm64
+            asset_suffix: linux-arm64
+          - goos: darwin
+            goarch: amd64
+            asset_suffix: darwin-amd64
+          - goos: darwin
+            goarch: arm64
+            asset_suffix: darwin-arm64
+          - goos: windows
+            goarch: amd64
+            asset_suffix: windows-amd64
+            ext: .exe
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+          VERSION: ${{ needs.validate-tag.outputs.version }}
+        run: |
+          mkdir -p dist
+          go build \
+            -ldflags "-X main.version=${VERSION} -s -w" \
+            -o dist/tui-streamer-${{ matrix.asset_suffix }}${{ matrix.ext }} \
+            ./cmd/server
+
+      - name: Create archive
+        id: archive
+        run: |
+          VERSION="${{ needs.validate-tag.outputs.version }}"
+          ASSET="tui-streamer-${VERSION}-${{ matrix.asset_suffix }}"
+          cd dist
+
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            zip "${ASSET}.zip" "tui-streamer-${{ matrix.asset_suffix }}${{ matrix.ext }}"
+            echo "filename=${ASSET}.zip" >> "$GITHUB_OUTPUT"
+          else
+            tar czf "${ASSET}.tar.gz" "tui-streamer-${{ matrix.asset_suffix }}"
+            echo "filename=${ASSET}.tar.gz" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.asset_suffix }}
+          path: dist/${{ steps.archive.outputs.filename }}
+          retention-days: 1
+
+  checksums:
+    name: Generate checksums
+    runs-on: ubuntu-latest
+    needs: [validate-tag, build]
+    outputs:
+      checksum_file: ${{ steps.checksum.outputs.filename }}
+    steps:
+      - name: Download all release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
+      - name: Generate SHA-256 checksums
+        id: checksum
+        run: |
+          VERSION="${{ needs.validate-tag.outputs.version }}"
+          CHECKSUM_FILE="tui-streamer-${VERSION}-checksums.txt"
+          cd dist
+          sha256sum *.tar.gz *.zip 2>/dev/null | sort > "${CHECKSUM_FILE}"
+          cat "${CHECKSUM_FILE}"
+          echo "filename=${CHECKSUM_FILE}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-checksums
+          path: dist/${{ steps.checksum.outputs.filename }}
+          retention-days: 1
+
+  release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: [validate-tag, build, checksums]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -lh dist/
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          VERSION="${{ needs.validate-tag.outputs.version }}"
+          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${VERSION}$" | head -1)
+
+          {
+            echo "## What's Changed"
+            echo ""
+            if [ -n "${PREV_TAG}" ]; then
+              git log "${PREV_TAG}..HEAD" \
+                --pretty=format:"- %s ([%h](https://github.com/${{ github.repository }}/commit/%H))" \
+                --no-merges
+            else
+              git log \
+                --pretty=format:"- %s ([%h](https://github.com/${{ github.repository }}/commit/%H))" \
+                --no-merges
+            fi
+            echo ""
+            echo ""
+            echo "## Installation"
+            echo ""
+            echo '```bash'
+            echo "# Linux / macOS"
+            echo "curl -L https://github.com/${{ github.repository }}/releases/download/${VERSION}/tui-streamer-${VERSION}-linux-amd64.tar.gz | tar xz"
+            echo ""
+            echo "# Verify checksum"
+            echo "curl -L https://github.com/${{ github.repository }}/releases/download/${VERSION}/tui-streamer-${VERSION}-checksums.txt | sha256sum --check --ignore-missing"
+            echo '```'
+          } > release_notes.md
+
+          cat release_notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.validate-tag.outputs.version }}
+          name: ${{ needs.validate-tag.outputs.version }}
+          body_path: release_notes.md
+          prerelease: ${{ needs.validate-tag.outputs.prerelease }}
+          fail_on_unmatched_files: true
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*-checksums.txt
