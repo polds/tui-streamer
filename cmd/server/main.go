@@ -32,7 +32,9 @@ func main() {
 	stdout := flag.Bool("stdout", true,  "capture stdout (default true)")
 	stderr := flag.Bool("stderr", true,  "capture stderr (default true)")
 
-	open := flag.Bool("open", false, "open the web UI in the default browser after startup")
+	// Default -open to true when launched as a macOS .app bundle so the browser
+	// opens automatically and the user sees feedback (the app has no Dock icon).
+	open := flag.Bool("open", insideAppBundle(), "open the web UI in the default browser after startup")
 
 	var allowed multiFlag
 	flag.Var(&allowed, "allow", "whitelist a binary name (repeat for multiple);\n\t\tomit to allow all commands")
@@ -86,6 +88,24 @@ Examples:
 	}
 
 	if err := http.ListenAndServe(addr, srv.Handler()); err != nil {
+		// When running as a .app and the port is already taken, a previous
+		// instance is likely running.  Open the browser to that instance and
+		// exit cleanly so macOS doesn't report the process as "not responding".
+		if insideAppBundle() {
+			log.Printf("could not start server (%v); opening browser to existing instance", err)
+			_ = browser.Open(url)
+			os.Exit(0)
+		}
 		log.Fatal(err)
 	}
+}
+
+// insideAppBundle reports whether the current process was launched from inside
+// a macOS .app bundle (i.e. its executable path contains ".app/Contents/MacOS/").
+func insideAppBundle() bool {
+	exe, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	return strings.Contains(exe, ".app/Contents/MacOS/")
 }
