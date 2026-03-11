@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements for notarization / hardened runtime.
+
+  If you are distributing outside the Mac App Store (direct download / .dmg),
+  use these entitlements with:
+
+    codesign --force --deep --options runtime \
+             --entitlements build/darwin/entitlements.plist \
+             --sign "Developer ID Application: Your Name (TEAMID)" \
+             dist/TuiStreamer.app
+
+  Then submit to Apple Notary:
+    xcrun notarytool submit dist/TuiStreamer-<version>.dmg \
+          --apple-id your@email.com --team-id TEAMID \
+          --password "@keychain:AC_PASSWORD" --wait
+-->
+<plist version="1.0">
+<dict>
+    <!-- Allow the binary to run under the hardened runtime -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <false/>
+
+    <!-- Network access (server listens on a local TCP port) -->
+    <key>com.apple.security.network.server</key>
+    <true/>
+
+    <key>com.apple.security.network.client</key>
+    <true/>
+
+    <!-- Allow spawning child processes (the executor runs arbitrary commands) -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+
+    <!-- Required for WebView builds (WKWebView / JavaScriptCore) -->
+    <!-- Uncomment if building with --webview: -->
+    <!--
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    -->
+</dict>
+</plist>

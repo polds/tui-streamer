@@ -1,0 +1,10 @@
+# Compiled binaries
+dist/
+server
+tui-streamer
+tui-streamer-*
+
+# Go test cache / coverage
+*.test
+*.out
+coverage.html

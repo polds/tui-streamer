@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
+	"github.com/polds/tui-streamer/internal/browser"
 	"github.com/polds/tui-streamer/internal/server"
 	"github.com/polds/tui-streamer/internal/session"
 	"github.com/polds/tui-streamer/web"
@@ -27,6 +29,8 @@ func main() {
 	stdout := flag.Bool("stdout", true,  "capture stdout (default true)")
 	stderr := flag.Bool("stderr", true,  "capture stderr (default true)")
 
+	open := flag.Bool("open", false, "open the web UI in the default browser after startup")
+
 	var allowed multiFlag
 	flag.Var(&allowed, "allow", "whitelist a binary name (repeat for multiple);\n\t\tomit to allow all commands")
 
@@ -38,6 +42,7 @@ Examples:
   tui-streamer                          # allow all commands, port 8080
   tui-streamer -port 3000 -dir /app     # custom port and working dir
   tui-streamer -allow make -allow npm   # whitelist specific binaries
+  tui-streamer -open                    # launch browser automatically
 `)
 	}
 	flag.Parse()
@@ -59,11 +64,22 @@ Examples:
 	srv := server.New(manager, cfg, staticFS)
 
 	addr := ":" + *port
-	log.Printf("tui-streamer listening on http://localhost%s", addr)
+	url := "http://localhost" + addr
+	log.Printf("tui-streamer listening on %s", url)
 	if len(allowed) > 0 {
 		log.Printf("allowed commands: %s", strings.Join(allowed, ", "))
 	} else {
 		log.Printf("all commands allowed (use -allow to restrict)")
+	}
+
+	if *open {
+		// Give the HTTP listener a moment to bind before opening the browser.
+		go func() {
+			time.Sleep(150 * time.Millisecond)
+			if err := browser.Open(url); err != nil {
+				log.Printf("browser: could not open %s: %v", url, err)
+			}
+		}()
 	}
 
 	if err := http.ListenAndServe(addr, srv.Handler()); err != nil {

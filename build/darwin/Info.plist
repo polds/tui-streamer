@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- ── Identity ──────────────────────────────────────────────────── -->
+    <key>CFBundleIdentifier</key>
+    <string>io.github.polds.tui-streamer</string>
+
+    <key>CFBundleName</key>
+    <string>TuiStreamer</string>
+
+    <key>CFBundleDisplayName</key>
+    <string>TUI Streamer</string>
+
+    <key>CFBundleExecutable</key>
+    <string>tui-streamer</string>
+
+    <!-- ── Version – substituted by the packaging script ─────────────── -->
+    <key>CFBundleVersion</key>
+    <string>__VERSION__</string>
+
+    <key>CFBundleShortVersionString</key>
+    <string>__SHORT_VERSION__</string>
+
+    <!-- ── Bundle type ────────────────────────────────────────────────── -->
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+
+    <key>CFBundleSignature</key>
+    <string>????</string>
+
+    <!-- ── macOS minimum version ──────────────────────────────────────── -->
+    <key>LSMinimumSystemVersion</key>
+    <string>12.0</string>
+
+    <!-- ── UI / appearance ───────────────────────────────────────────── -->
+    <key>NSHighResolutionCapable</key>
+    <true/>
+
+    <key>NSSupportsAutomaticGraphicsSwitching</key>
+    <true/>
+
+    <!-- Prevents the app from appearing in the Dock when running
+         in server-only mode (no WebView window). Remove or set to
+         false when building with --webview to show a Dock icon. -->
+    <key>LSUIElement</key>
+    <true/>
+
+    <!-- ── Privacy descriptions (needed if accessing network) ────────── -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>TUI Streamer needs local network access to serve its web UI.</string>
+
+    <!-- ── Document types / URL schemes (none required) ─────────────── -->
+</dict>
+</plist>
