@@ -166,55 +166,16 @@ if [[ "$CREATE_DMG" == "true" ]]; then
   # Create a symlink to /Applications so the user can drag-and-drop install
   ln -s /Applications "${DMG_STAGE}/Applications"
 
-  # Size estimate: add 20 MB headroom to the actual app size
-  APP_SIZE_KB=$(du -sk "${APP_BUNDLE}" | awk '{print $1}')
-  DMG_SIZE_KB=$(( APP_SIZE_KB + 20480 ))
-
-  # Create a writable intermediate image
-  TEMP_DMG="${OUT_DIR}/.tmp-${APP_NAME}.dmg"
-  hdiutil create \
-    -srcfolder "${DMG_STAGE}" \
-    -volname "${APP_NAME}" \
-    -fs HFS+ \
-    -fsargs "-c c=65536,a=16,b=16" \
-    -format UDRW \
-    -size "${DMG_SIZE_KB}k" \
-    "${TEMP_DMG}"
-
-  # Mount, optionally set background / icon positions, then unmount
-  MOUNT_DIR="$(mktemp -d)"
-  hdiutil attach -readwrite -noverify -noautoopen \
-    "${TEMP_DMG}" -mountpoint "${MOUNT_DIR}"
-
-  # Basic window layout via AppleScript (best-effort; skipped if osascript fails)
-  osascript 2>/dev/null <<APPLESCRIPT || true
-tell application "Finder"
-  tell disk "${APP_NAME}"
-    open
-    set current view of container window to icon view
-    set toolbar visible of container window to false
-    set statusbar visible of container window to false
-    set the bounds of container window to {100, 100, 700, 440}
-    set viewOptions to the icon view options of container window
-    set arrangement of viewOptions to not arranged
-    set icon size of viewOptions to 128
-    set position of item "${APP_NAME}.app" of container window to {160, 180}
-    set position of item "Applications" of container window to {460, 180}
-    close
-    open
-    update without registering applications
-    delay 2
-  end tell
-end tell
-APPLESCRIPT
-
-  hdiutil detach "${MOUNT_DIR}"
-
-  # Convert to a compressed, read-only DMG
+  # Build a compressed read-only DMG directly from the staging folder.
+  # Using -format UDZO avoids the deprecated HFS+-with-fsargs two-step
+  # (UDRW create → mount → convert) that fails with "Operation not permitted"
+  # on macOS 13+ due to tightened kernel security controls.
   rm -f "${DMG_PATH}"
-  hdiutil convert "${TEMP_DMG}" \
+  hdiutil create \
+    -volname "${APP_NAME}" \
+    -srcfolder "${DMG_STAGE}" \
+    -ov \
     -format UDZO \
-    -imagekey zlib-level=9 \
     -o "${DMG_PATH}"
 
   # Sign the .dmg too (if an identity was provided)
@@ -223,7 +184,6 @@ APPLESCRIPT
     echo "  ✓ DMG signed"
   fi
 
-  rm -f "${TEMP_DMG}"
   rm -rf "${DMG_STAGE}"
 
   echo "✓ .dmg ready: ${DMG_PATH}"
