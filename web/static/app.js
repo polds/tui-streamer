@@ -427,10 +427,14 @@ class App {
     item.dataset.id = s.id;
 
     const dotClass = s.running ? 'running' : status === 'connected' ? 'connected' : '';
+    // Show a "ready" pill for bundle sessions that have a pending command and
+    // have never been run (no buffered output yet).
+    const hasPending = s.pending_command && !s.running &&
+                       !(this.buffers[s.id] && this.buffers[s.id].length > 0);
     item.innerHTML = `
       <span class="session-dot ${dotClass}"></span>
       <span class="session-name" title="${this._esc(s.id)}">${this._esc(s.name)}</span>
-      ${s.client_count > 0 ? `<span class="session-badge">${s.client_count}</span>` : ''}
+      ${hasPending ? `<span class="session-badge session-badge-ready" title="Pre-configured command ready to run">&#9656;</span>` : (s.client_count > 0 ? `<span class="session-badge">${s.client_count}</span>` : '')}
       <span class="session-actions">
         <button class="btn btn-icon btn-danger" data-action="delete" title="Delete session">
           <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
@@ -470,6 +474,10 @@ class App {
     for (const msg of (this.buffers[id] || [])) {
       this.terminal.append(msg);
     }
+
+    // Pre-populate command input from bundle pending_command if the input is empty
+    // or if it still holds the previous session's pending command.
+    this.$cmdInput.value = s.pending_command || '';
 
     this._updateConnBadge(this.statuses[id] || 'disconnected');
     this._renderSidebar();

@@ -344,6 +344,13 @@ body {
   color: var(--text-muted);
 }
 
+.session-badge-ready {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--accent);
+  font-size: 11px;
+  padding: 1px 4px;
+}
+
 .session-actions {
   display: none;
   gap: 2px;

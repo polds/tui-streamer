@@ -1,0 +1,25 @@
+{
+  "name": "Network Diagnostics",
+  "sessions": [
+    {
+      "name": "00-ping-test",
+      "command": "ping -c 4 example.com",
+      "auto": true
+    },
+    {
+      "name": "01-dns-test",
+      "command": "dig +short example.com",
+      "auto": true
+    },
+    {
+      "name": "02-traceroute",
+      "command": "traceroute example.com",
+      "auto": false
+    },
+    {
+      "name": "03-flush-dns",
+      "command": "sudo dscacheutil -flushdns",
+      "auto": false
+    }
+  ]
+}

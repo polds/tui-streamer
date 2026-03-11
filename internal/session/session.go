@@ -17,9 +17,13 @@ const maxLineBuf = 10_000
 // Session is a named execution context. Multiple WebSocket clients can
 // subscribe and all receive the same streamed output from any executed command.
 type Session struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	CreatedAt time.Time `json:"created_at"`
+	ID             string    `json:"id"`
+	Name           string    `json:"name"`
+	CreatedAt      time.Time `json:"created_at"`
+	// PendingCommand is an optional pre-configured command string loaded from a
+	// bundle. It is surfaced to the UI so the command bar can be pre-populated.
+	// An empty string means no pending command.
+	PendingCommand string    `json:"pending_command,omitempty"`
 
 	mu      sync.RWMutex
 	clients map[*Client]struct{}
@@ -30,11 +34,12 @@ type Session struct {
 
 // Info is a JSON-safe snapshot of the session's current state.
 type Info struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	CreatedAt   time.Time `json:"created_at"`
-	Running     bool      `json:"running"`
-	ClientCount int       `json:"client_count"`
+	ID             string    `json:"id"`
+	Name           string    `json:"name"`
+	CreatedAt      time.Time `json:"created_at"`
+	Running        bool      `json:"running"`
+	ClientCount    int       `json:"client_count"`
+	PendingCommand string    `json:"pending_command,omitempty"`
 }
 
 func newSession(id, name string) *Session {
@@ -51,11 +56,12 @@ func (s *Session) Info() Info {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return Info{
-		ID:          s.ID,
-		Name:        s.Name,
-		CreatedAt:   s.CreatedAt,
-		Running:     s.running,
-		ClientCount: len(s.clients),
+		ID:             s.ID,
+		Name:           s.Name,
+		CreatedAt:      s.CreatedAt,
+		Running:        s.running,
+		ClientCount:    len(s.clients),
+		PendingCommand: s.PendingCommand,
 	}
 }
 
