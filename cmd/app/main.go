@@ -159,6 +159,7 @@ func main() {
 	wv.Init(`(function () {
 		document.addEventListener('keydown', function (e) {
 			if (!e.metaKey) return;
+			var handled = true;
 			switch (e.key) {
 				case 'a': document.execCommand('selectAll', false); break;
 				case 'c': document.execCommand('copy',      false); break;
@@ -168,7 +169,12 @@ func main() {
 					if (e.shiftKey) document.execCommand('redo', false);
 					else            document.execCommand('undo', false);
 					break;
+				default: handled = false;
 			}
+			// Prevent the event from reaching the macOS responder chain after we
+			// have handled it.  Without this the OS finds no matching responder
+			// and plays the system "beep" even though the action succeeded.
+			if (handled) e.preventDefault();
 		}, true /* capture */);
 	})();`)
 
