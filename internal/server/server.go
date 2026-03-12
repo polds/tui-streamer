@@ -16,6 +16,9 @@ import (
 	"github.com/polds/tui-streamer/internal/session"
 )
 
+// maxBundleBodyBytes caps the YAML body accepted by /api/bundles (4 MiB).
+const maxBundleBodyBytes = 4 << 20
+
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 4096,
@@ -280,6 +283,8 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request, sess *sessio
 
 // ── REST: /api/bundles ──────────────────────────────────────────────────────
 
+// handleBundles accepts a YAML bundle file (kind: Bundle or kind: BundleSet
+// with inline Bundle documents) and creates the declared sessions.
 func (s *Server) handleBundles(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method != http.MethodPost {
@@ -287,38 +292,45 @@ func (s *Server) handleBundles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var b bundle.Bundle
-	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
-		http.Error(w, `{"error":"invalid JSON"}`, http.StatusBadRequest)
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxBundleBodyBytes))
+	if err != nil {
+		http.Error(w, `{"error":"could not read request body"}`, http.StatusBadRequest)
 		return
 	}
 
-	if b.Name == "" {
-		http.Error(w, `{"error":"bundle must have a name"}`, http.StatusBadRequest)
+	f, err := bundle.Parse(body)
+	if err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
 		return
 	}
 
-	// Check if the bundle name is already imported
-	for _, sess := range s.manager.List() {
-		if sess.BundleName == b.Name {
-			http.Error(w, `{"error":"bundle already imported"}`, http.StatusConflict)
-			return
+	// Check for already-imported bundles (by name) before creating anything.
+	existing := s.manager.List()
+	for _, b := range f.Bundles {
+		for _, sess := range existing {
+			if sess.BundleName == b.Name {
+				http.Error(w, `{"error":"bundle "`+b.Name+`" already imported"}`, http.StatusConflict)
+				return
+			}
 		}
 	}
 
-	// Create sessions for the imported bundle
-	for _, entry := range b.Sessions {
-		sess := s.manager.Create(entry.Name, b.Name)
-		sess.PendingCommand = entry.Command
-		if entry.Auto && entry.Command != "" {
-			opts := executor.Options{
-				Command: strings.Fields(entry.Command),
-				Dir:     s.cfg.Dir,
-				Stdout:  s.cfg.Stdout,
-				Stderr:  s.cfg.Stderr,
-			}
-			if err := sess.Exec(opts); err != nil {
-				log.Printf("bundle api: auto-exec %q: %v", entry.Name, err)
+	// Create sessions for every bundle in the file.
+	for _, b := range f.Bundles {
+		for _, entry := range b.Sessions {
+			sess := s.manager.Create(entry.Name, b.Name)
+			sess.PendingCommand = entry.Command
+			sess.Description = entry.Description
+			if entry.Autorun && entry.Command != "" {
+				opts := executor.Options{
+					Command: strings.Fields(entry.Command),
+					Dir:     s.cfg.Dir,
+					Stdout:  s.cfg.Stdout,
+					Stderr:  s.cfg.Stderr,
+				}
+				if err := sess.Exec(opts); err != nil {
+					log.Printf("bundle api: auto-exec %q: %v", entry.Name, err)
+				}
 			}
 		}
 	}
