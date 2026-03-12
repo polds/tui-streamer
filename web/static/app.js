@@ -239,6 +239,16 @@ class Terminal {
     const el = this._buildLine(msg);
     if (!el) return;
     this.container.appendChild(el);
+    // Keep the DOM lean: prune oldest output lines when we exceed the cap.
+    // We only remove terminal-line nodes (stdout/stderr), not event banners
+    // (start/exit/error), so structural context is preserved.
+    const lines = this.container.querySelectorAll('.terminal-line');
+    if (lines.length > MAX_DOM_LINES) {
+      const excess = lines.length - MAX_DOM_LINES;
+      for (let i = 0; i < excess; i++) {
+        lines[i].remove();
+      }
+    }
     if (this.autoScroll) {
       el.scrollIntoView({ block: 'end' });
     }
@@ -424,6 +434,29 @@ class MarkdownRenderer {
   }
 }
 
+// ── Constants ────────────────────────────────────────────────────────────────
+
+// Maximum messages kept in the per-session in-memory replay buffer.
+// Older entries are evicted to prevent the page from slowing to a crawl when
+// a command produces thousands of lines (e.g. top, find, log tailing).
+const MAX_BUFFER = 2000;
+
+// Maximum terminal DOM nodes before old lines are pruned from the top.
+const MAX_DOM_LINES = 2000;
+
+// Commands known to be full-screen/interactive curses applications that expect
+// a real TTY and won't render usefully in a line-streamed terminal.
+const INTERACTIVE_COMMANDS = new Set([
+  'top', 'htop', 'atop', 'iotop', 'mtr', 'nload', 'iftop', 'nethogs',
+  'vim', 'vi', 'nvim', 'nano', 'emacs', 'pico', 'micro',
+  'less', 'more', 'man',
+  'mc', 'ranger', 'nnn', 'lf', 'vifm',
+  'ncdu', 'cfdisk', 'fdisk',
+  'tmux', 'screen',
+  'lynx', 'links', 'w3m',
+  'watch',
+]);
+
 // ── Application ─────────────────────────────────────────────────────────────
 
 class App {
@@ -594,7 +627,13 @@ class App {
     this.sockets[sessionId] = new SessionSocket(
       sessionId,
       (msg) => {
-        this.buffers[sessionId].push(msg);
+        const buf = this.buffers[sessionId];
+        buf.push(msg);
+        // Evict oldest entries once the buffer exceeds the cap so that late-joining
+        // clients don't replay gigabytes of output.
+        if (buf.length > MAX_BUFFER) {
+          buf.splice(0, buf.length - MAX_BUFFER);
+        }
         if (this.activeId === sessionId) {
           this.terminal.append(msg);
           // Dismiss the hint the moment the first output line arrives.
@@ -884,6 +923,18 @@ class App {
     // Shell-split the command (basic: split on spaces, respect quotes)
     const command = this._shellSplit(raw);
     if (!command.length) return;
+
+    // Warn about known interactive/curses applications that expect a real TTY.
+    // They use full-screen escape sequences (cursor movement, clear-screen) that
+    // won't render correctly in a line-by-line stream.
+    if (INTERACTIVE_COMMANDS.has(command[0])) {
+      const ok = await this._uiConfirm(
+        `"${command[0]}" is an interactive application designed for a real terminal (TTY).\n\n` +
+        `Its output may appear garbled or not display at all because it relies on cursor control sequences that don't work in a streaming view.\n\n` +
+        `Consider a non-interactive alternative (e.g. "top -b -n 1" for a single snapshot).\n\nRun anyway?`
+      );
+      if (!ok) return;
+    }
 
     try {
       await api.execCommand(this.activeId, command);

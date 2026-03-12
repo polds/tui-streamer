@@ -11,8 +11,9 @@ import (
 )
 
 // maxLineBuf is the maximum number of output lines retained for replay to
-// clients that connect after execution has already started.
-const maxLineBuf = 10_000
+// clients that connect after execution has already started. Kept modest to
+// avoid excessive memory use when long-running commands produce lots of output.
+const maxLineBuf = 2_000
 
 // Session is a named execution context. Multiple WebSocket clients can
 // subscribe and all receive the same streamed output from any executed command.
