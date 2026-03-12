@@ -874,7 +874,23 @@ class App {
   }
 
   async _copyAllOutput(btn) {
-    const lines = Array.from(this.$termOutput.querySelectorAll('.terminal-line'));
+    let lines;
+    if (btn) {
+      const startEl = btn.closest('.line-event.start');
+      if (startEl) {
+        lines = [];
+        let sibling = startEl.nextElementSibling;
+        while (sibling && !sibling.classList.contains('line-event')) {
+          if (sibling.classList.contains('terminal-line')) {
+            lines.push(sibling);
+          }
+          sibling = sibling.nextElementSibling;
+        }
+      }
+    }
+    if (!lines) {
+      lines = Array.from(this.$termOutput.querySelectorAll('.terminal-line'));
+    }
     const text = lines.map(el => {
       const content = el.querySelector('.line-content');
       return content ? content.textContent : '';
