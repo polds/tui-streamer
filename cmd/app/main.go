@@ -48,7 +48,7 @@ func (f *multiFlag) Set(v string) error { *f = append(*f, v); return nil }
 func main() {
 	defaultTitle := "TUI Streamer"
 	bundlePath := getBundlePath()
-	var b *bundle.Bundle
+	var b *bundle.File
 	if bundlePath != "" {
 		if loaded, err := bundle.Load(bundlePath); err == nil {
 			b = loaded
@@ -90,24 +90,27 @@ func main() {
 	manager := session.NewManager()
 
 	if b != nil {
-		log.Printf("bundle %q: loading %d session(s)", b.Name, len(b.Sessions))
-		for _, entry := range b.Sessions {
-			sess := manager.Create(entry.Name, b.Name)
-			sess.PendingCommand = entry.Command
-			if entry.Auto && entry.Command != "" {
-				opts := executor.Options{
-					Command: strings.Fields(entry.Command),
-					Dir:     *dir,
-					Stdout:  true,
-					Stderr:  true,
-				}
-				if err := sess.Exec(opts); err != nil {
-					log.Printf("bundle: auto-exec %q: %v", entry.Name, err)
+		for _, bun := range b.Bundles {
+			log.Printf("bundle %q: loading %d session(s)", bun.Name, len(bun.Sessions))
+			for _, entry := range bun.Sessions {
+				sess := manager.Create(entry.Name, bun.Name)
+				sess.PendingCommand = entry.Command
+				sess.Description = entry.Description
+				if entry.Autorun && entry.Command != "" {
+					opts := executor.Options{
+						Command: strings.Fields(entry.Command),
+						Dir:     *dir,
+						Stdout:  true,
+						Stderr:  true,
+					}
+					if err := sess.Exec(opts); err != nil {
+						log.Printf("bundle: auto-exec %q: %v", entry.Name, err)
+					} else {
+						log.Printf("bundle: auto-exec %q: started", entry.Name)
+					}
 				} else {
-					log.Printf("bundle: auto-exec %q: started", entry.Name)
+					log.Printf("bundle: created %q (manual execution)", entry.Name)
 				}
-			} else {
-				log.Printf("bundle: created %q (manual execution)", entry.Name)
 			}
 		}
 	}
@@ -180,7 +183,7 @@ func main() {
 
 	// Bind a function to open the native macOS file picker
 	wv.Bind("openFileDialog", func() (string, error) {
-		cmd := exec.Command("osascript", "-e", `POSIX path of (choose file with prompt "Select a bundle.json" of type {"public.json"})`)
+		cmd := exec.Command("osascript", "-e", `POSIX path of (choose file with prompt "Select a bundle YAML file" of type {"public.yaml", "public.data"})`)
 		out, err := cmd.Output()
 		if err != nil {
 			// user likely hit cancel
@@ -297,18 +300,19 @@ func splashHTML(title string) string {
 	return strings.Replace(html, "{{TITLE}}", title, 1)
 }
 
-// getBundlePath returns the path to a bundle.json file packaged inside
-// the .app bundle. If found, it returns the absolute path.
+// getBundlePath returns the path to a bundle YAML file packaged inside
+// the .app bundle. Checks for bundle.yaml, then bundle.yml as fallbacks.
 func getBundlePath() string {
 	exe, err := os.Executable()
 	if err != nil {
 		return ""
 	}
 	resourcesDir := filepath.Join(filepath.Dir(exe), "../Resources")
-	bundlePath := filepath.Join(resourcesDir, "bundle.json")
-
-	if _, err := os.Stat(bundlePath); err == nil {
-		return bundlePath
+	for _, name := range []string{"bundle.yaml", "bundle.yml"} {
+		p := filepath.Join(resourcesDir, name)
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
 	}
 	return ""
 }
