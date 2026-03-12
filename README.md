@@ -40,12 +40,21 @@
 - **Process Control** — Start, stop, and kill running processes via REST API
 - **No Build Step** — Vanilla JavaScript frontend, zero dependencies, runs anywhere
 
+### Bundles & BundleSets
+
+Pre-configure sessions in a YAML file and load them at startup or import them from the UI:
+
+- **Bundle** — A named group of sessions, each with an optional command, description, and `autorun` flag
+- **BundleSet** — Composes multiple `Bundle` documents from the same file into an ordered set
+- **Markdown Descriptions** — Each session can include a `description` field rendered as styled Markdown in the terminal panel
+- **Auto-execution** — Sessions with `autorun: true` start their commands immediately on load
+
 ### Web UI
 
-- **6 Beautiful Themes** — Dracula, Monokai, Solarized Dark, Solarized Light, Gruvbox, Nord
+- **10 Beautiful Themes** — Catppuccin (4 variants), Dark, Dracula, Matrix, Nord, Solarized, Light
 - **Auto-scroll** — Smart scrolling that pauses when you scroll up to review output
-- **Responsive Design** — Works on desktop, tablet, and mobile
 - **Session Management** — Create, switch between, and delete sessions from the UI
+- **Line Selection** — Click or shift-click terminal lines to copy or export to ray.so
 
 ### Security & Deployment
 
@@ -145,6 +154,14 @@ go build -o dist/tui-streamer.exe ./cmd/server
 
 Ready-to-run examples are available in the [examples/](examples/) directory!
 
+### [Network Troubleshooting Bundle](examples/network-bundle/)
+
+A multi-bundle YAML file that pre-creates connectivity and DNS diagnostic sessions. Demonstrates `BundleSet`, multiple `Bundle` documents, `autorun`, and Markdown `description` fields.
+
+```bash
+tui-streamer -bundle examples/network-bundle/bundle.yaml -open
+```
+
 ### [Lorem Ipsum Streamer](examples/lorem-ipsum/)
 
 Fetch articles from an API and stream them in real-time. Demonstrates:
@@ -167,16 +184,116 @@ See the [examples README](examples/README.md) for more details and ideas for cre
 
 ### Command-Line Flags
 
-```bash
+```
 ./tui-streamer [flags]
 
 Flags:
-  -port int       Port to listen on (default: 8080)
-  -dir string     Working directory for executed commands
-  -stdout string  Override stdout for spawned commands
-  -stderr string  Override stderr for spawned commands
-  -allow string   Comma-separated command whitelist (e.g. "ls,cat,echo")
+  -port string    Port to listen on (default: 8080)
+  -dir string     Default working directory for executed commands (default: .)
+  -title string   Window / browser-tab title
+  -stdout         Capture stdout (default true)
+  -stderr         Capture stderr (default true)
+  -allow string   Whitelist a binary name; repeat for multiple
+                  (omit to allow all commands)
+  -bundle string  Path to a YAML bundle file that pre-creates sessions
   -open           Auto-launch browser on startup
+```
+
+### Bundles
+
+A **bundle file** is a YAML document that declares sessions to be created on
+startup. Sessions can have a pre-configured command, an optional Markdown
+description, and an `autorun` flag.
+
+#### Single Bundle
+
+```yaml
+---
+apiVersion: v1
+kind: Bundle
+metadata:
+  name: Deploy
+spec:
+  sessions:
+    - name: Build
+      description: Compile the project and run tests.
+      command: make build test
+      autorun: true
+
+    - name: Deploy
+      description: |
+        Push the build artifacts to production.
+        **Only run this after Build succeeds.**
+      command: make deploy
+      autorun: false
+```
+
+Load it at startup:
+
+```bash
+tui-streamer -bundle deploy.yaml -open
+```
+
+#### BundleSet — Multiple Bundles in One File
+
+A `BundleSet` references multiple `Bundle` documents from the same file,
+grouping them into an ordered set. Use `---` to separate YAML documents.
+
+```yaml
+---
+apiVersion: v1
+kind: BundleSet
+metadata:
+  name: Network Troubleshooting
+spec:
+  bundles:
+    - name: Connectivity
+    - name: DNS
+
+---
+apiVersion: v1
+kind: Bundle
+metadata:
+  name: Connectivity
+spec:
+  sessions:
+    - name: Ping
+      description: Run a ping test against `example.com`
+      command: ping -c 4 example.com
+      autorun: true
+
+---
+apiVersion: v1
+kind: Bundle
+metadata:
+  name: DNS
+spec:
+  sessions:
+    - name: Dig
+      description: Query `example.com` using the system resolver.
+      command: dig +short example.com
+      autorun: true
+```
+
+#### Importing via the UI
+
+Click **Import** in the sidebar and select a `.yaml` or `.yml` bundle file.
+Bundles with a `BundleSet` or multiple `Bundle` documents are all imported in
+one step.
+
+#### Session Descriptions
+
+When a bundle entry includes a `description` field, it is rendered as styled
+Markdown in the terminal panel above the output — useful for documenting what
+a command does and how to interpret its results.
+
+```yaml
+- name: Memory Usage
+  description: |
+    Show **resident set size** and **virtual memory** for all processes.
+    Look for processes exceeding 1 GB RSS as potential memory leaks.
+  command: ps aux --sort=-%mem
+  autorun: true
 ```
 
 ### Examples
@@ -185,33 +302,22 @@ Flags:
 
 ```bash
 # Start server with command whitelisting
-./tui-streamer -allow "npm,go,make,cargo" -port 3000
+tui-streamer -allow make -allow npm -port 3000
 
 # Execute a build
 curl -X POST http://localhost:3000/api/sessions/{id}/exec \
   -H "Content-Type: application/json" \
-  -d '{"command": "npm", "args": ["run", "build"]}'
+  -d '{"command": "make build"}'
 ```
 
 #### Tail Logs in Real-time
 
 ```bash
-# Start server
-./tui-streamer
+tui-streamer
 
-# Tail a log file
 curl -X POST http://localhost:8080/api/sessions/{id}/exec \
   -H "Content-Type: application/json" \
-  -d '{"command": "tail", "args": ["-f", "/var/log/app.log"]}'
-```
-
-#### Run Long-running Scripts
-
-```bash
-# Perfect for deployment scripts, migrations, or backups
-curl -X POST http://localhost:8080/api/sessions/{id}/exec \
-  -H "Content-Type: application/json" \
-  -d '{"command": "./deploy.sh", "args": ["production"]}'
+  -d '{"command": "tail -f /var/log/app.log"}'
 ```
 
 ### REST API
@@ -222,9 +328,11 @@ curl -X POST http://localhost:8080/api/sessions/{id}/exec \
 |--------|----------|-------------|
 | `GET` | `/api/sessions` | List all sessions |
 | `POST` | `/api/sessions` | Create a new session |
+| `GET` | `/api/sessions/{id}` | Get a single session |
 | `DELETE` | `/api/sessions/{id}` | Delete a session |
 | `POST` | `/api/sessions/{id}/exec` | Execute a command in a session |
 | `POST` | `/api/sessions/{id}/kill` | Kill the running process |
+| `POST` | `/api/bundles` | Import a YAML bundle (creates sessions) |
 
 #### WebSocket
 
@@ -284,8 +392,8 @@ make app-server
 # Create a distributable .dmg
 make dmg
 
-# You can also package a specific bundle JSON, which will dynamically name the application
-make app BUNDLE=./examples/network-bundle/bundle.json
+# Package a specific bundle YAML — the app is named from the BundleSet/Bundle metadata
+make app BUNDLE=./examples/network-bundle/bundle.yaml
 ```
 
 ### Project Structure
@@ -314,16 +422,20 @@ See [CLAUDE.md](CLAUDE.md) for detailed architecture documentation and developme
 
 ## Themes
 
-tui-streamer includes 6 carefully crafted color themes:
+tui-streamer includes 10 carefully crafted color themes:
 
-- **Dracula** — Dark purple theme with vibrant accents
-- **Monokai** — Classic dark theme with warm colors
-- **Solarized Dark** — Low-contrast dark theme
-- **Solarized Light** — Low-contrast light theme
-- **Gruvbox** — Retro warm dark theme
-- **Nord** — Arctic-inspired cool dark theme
+- **Catppuccin Macchiato** *(default)* — Warm mid-dark pastel
+- **Catppuccin Latte** — Light pastel
+- **Catppuccin Frappé** — Muted cool-dark pastel
+- **Catppuccin Mocha** — Rich dark pastel
+- **Dark** — GitHub-inspired dark
+- **Dracula** — Dark purple with vibrant accents
+- **Matrix** — Green-on-black with glow effect
+- **Nord** — Arctic-inspired cool dark
+- **Solarized** — Low-contrast warm dark
+- **Light** — Clean light theme
 
-Switch themes via the dropdown in the web UI. Your preference is saved to localStorage.
+Switch themes via the dropdown in the web UI. Your preference is saved to `localStorage`.
 
 ---
 
