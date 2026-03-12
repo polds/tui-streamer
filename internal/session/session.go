@@ -17,15 +17,18 @@ const maxLineBuf = 10_000
 // Session is a named execution context. Multiple WebSocket clients can
 // subscribe and all receive the same streamed output from any executed command.
 type Session struct {
-	ID             string    `json:"id"`
-	Name           string    `json:"name"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
 	// PendingCommand is an optional pre-configured command string loaded from a
 	// bundle. It is surfaced to the UI so the command bar can be pre-populated.
 	// An empty string means no pending command.
-	PendingCommand string    `json:"pending_command,omitempty"`
+	PendingCommand string `json:"pending_command,omitempty"`
 	// BundleName is the name of the bundle this session belongs to, if any.
-	BundleName     string    `json:"bundle_name,omitempty"`
+	BundleName string `json:"bundle_name,omitempty"`
+	// Description is an optional Markdown description loaded from a bundle
+	// entry. It is rendered in the web UI alongside the terminal output.
+	Description string `json:"description,omitempty"`
 
 	mu      sync.RWMutex
 	clients map[*Client]struct{}
@@ -43,6 +46,7 @@ type Info struct {
 	ClientCount    int       `json:"client_count"`
 	PendingCommand string    `json:"pending_command,omitempty"`
 	BundleName     string    `json:"bundle_name,omitempty"`
+	Description    string    `json:"description,omitempty"`
 }
 
 func newSession(id, name, bundleName string) *Session {
@@ -67,6 +71,7 @@ func (s *Session) Info() Info {
 		ClientCount:    len(s.clients),
 		PendingCommand: s.PendingCommand,
 		BundleName:     s.BundleName,
+		Description:    s.Description,
 	}
 }
 

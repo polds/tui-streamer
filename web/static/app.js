@@ -139,7 +139,7 @@ const api = {
     const text = await file.text();
     const r = await fetch('/api/bundles', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'text/yaml' },
       body: text,
     });
     if (!r.ok) {
@@ -315,6 +315,115 @@ class Terminal {
   }
 }
 
+// ── Markdown renderer ───────────────────────────────────────────────────────
+//
+// Minimal subset: headings (h1-h3), paragraphs, unordered lists, fenced code
+// blocks, inline bold/italic/code/links.  Safe: all text nodes are HTML-escaped
+// before inline patterns are applied, so user-supplied content cannot inject
+// arbitrary HTML.
+
+class MarkdownRenderer {
+  render(md) {
+    if (!md) return '';
+    const blocks = this._parseBlocks(md.split('\n'));
+    return blocks.map(b => this._renderBlock(b)).join('\n');
+  }
+
+  _parseBlocks(lines) {
+    const blocks = [];
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+
+      // Fenced code block (``` ... ```)
+      if (line.startsWith('```')) {
+        const lang = line.slice(3).trim();
+        const codeLines = [];
+        i++;
+        while (i < lines.length && !lines[i].startsWith('```')) {
+          codeLines.push(lines[i]);
+          i++;
+        }
+        i++; // consume closing ```
+        blocks.push({ type: 'code', lang, text: codeLines.join('\n') });
+        continue;
+      }
+
+      // ATX heading (#, ##, ###)
+      const hm = line.match(/^(#{1,3})\s+(.*)/);
+      if (hm) {
+        blocks.push({ type: 'heading', level: hm[1].length, text: hm[2] });
+        i++; continue;
+      }
+
+      // Unordered list (- or *)
+      if (/^[-*]\s+/.test(line)) {
+        const items = [];
+        while (i < lines.length && /^[-*]\s+/.test(lines[i])) {
+          items.push(lines[i].replace(/^[-*]\s+/, ''));
+          i++;
+        }
+        blocks.push({ type: 'ul', items });
+        continue;
+      }
+
+      // Blank line — separator, skip
+      if (line.trim() === '') { i++; continue; }
+
+      // Paragraph — accumulate until blank / heading / list / code fence
+      const paraLines = [];
+      while (
+        i < lines.length &&
+        lines[i].trim() !== '' &&
+        !lines[i].match(/^#{1,3}\s/) &&
+        !lines[i].startsWith('```') &&
+        !/^[-*]\s+/.test(lines[i])
+      ) {
+        paraLines.push(lines[i]);
+        i++;
+      }
+      if (paraLines.length) blocks.push({ type: 'p', text: paraLines.join(' ') });
+    }
+    return blocks;
+  }
+
+  _renderBlock(b) {
+    switch (b.type) {
+      case 'heading': return `<h${b.level} class="md-h${b.level}">${this._inline(b.text)}</h${b.level}>`;
+      case 'p':       return `<p class="md-p">${this._inline(b.text)}</p>`;
+      case 'ul':      return `<ul class="md-ul">${b.items.map(it => `<li>${this._inline(it)}</li>`).join('')}</ul>`;
+      case 'code':    return `<pre class="md-pre"><code>${this._esc(b.text)}</code></pre>`;
+      default:        return '';
+    }
+  }
+
+  // Convert inline Markdown to HTML.  Text is escaped first so patterns are
+  // matched against safe content; the injected HTML tags are our own.
+  _inline(text) {
+    // Escape HTML entities in raw text first.
+    let s = this._esc(text);
+    // Inline code (must come before bold/italic to protect its contents).
+    s = s.replace(/`([^`]+)`/g, '<code class="md-code">$1</code>');
+    // Bold (**text**)
+    s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    // Italic (*text*)  — only after bold so *** isn't ambiguous
+    s = s.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    // Links [text](url)
+    s = s.replace(
+      /\[([^\]]+)\]\(([^)]+)\)/g,
+      '<a class="md-link" href="$2" target="_blank" rel="noopener">$1</a>',
+    );
+    return s;
+  }
+
+  _esc(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+}
+
 // ── Application ─────────────────────────────────────────────────────────────
 
 class App {
@@ -339,8 +448,9 @@ class App {
     this.$nameInput   = document.getElementById('input-session-name');
     this.$termPanel   = document.getElementById('terminal-panel');
     this.$emptyState  = document.getElementById('empty-state');
-    this.$termTitle   = document.getElementById('term-title');
-    this.$termSubtitle= document.getElementById('term-subtitle');
+    this.$termTitle       = document.getElementById('term-title');
+    this.$termSubtitle    = document.getElementById('term-subtitle');
+    this.$termDescription = document.getElementById('term-description');
     this.$connDot     = document.getElementById('conn-dot');
     this.$connLabel   = document.getElementById('conn-label');
     this.$termOutput  = document.getElementById('terminal-output');
@@ -357,7 +467,8 @@ class App {
     this.$killBtn     = document.getElementById('btn-kill');
     this.$themeSelect = document.getElementById('theme-select');
 
-    this.terminal = new Terminal(this.$termOutput);
+    this.terminal  = new Terminal(this.$termOutput);
+    this.mdRenderer = new MarkdownRenderer();
 
     this._bindEvents();
     this._loadTheme();
@@ -612,9 +723,10 @@ class App {
 
     this.$emptyState.classList.add('hidden');
     this.$termPanel.classList.remove('hidden');
-    this.$termTitle.textContent   = s.name;
+    this.$termTitle.textContent    = s.name;
     this.$termSubtitle.textContent = id.substring(0, 8) + '…';
 
+    this._updateDescription(s.description);
     this._clearSelection();
 
     // Replay buffered output
@@ -701,8 +813,18 @@ class App {
   }
 
   _updateConnBadge(status) {
-    this.$connDot.className  = `conn-dot ${status}`;
+    this.$connDot.className     = `conn-dot ${status}`;
     this.$connLabel.textContent = status;
+  }
+
+  _updateDescription(description) {
+    if (!description) {
+      this.$termDescription.classList.add('hidden');
+      this.$termDescription.innerHTML = '';
+      return;
+    }
+    this.$termDescription.innerHTML = this.mdRenderer.render(description);
+    this.$termDescription.classList.remove('hidden');
   }
 
   async _createSession() {

@@ -1,0 +1,59 @@
+---
+apiVersion: v1
+kind: BundleSet
+metadata:
+  name: Network Troubleshooting
+spec:
+  bundles:
+    - name: Connectivity
+    - name: DNS
+
+---
+apiVersion: v1
+kind: Bundle
+metadata:
+  name: Connectivity
+spec:
+  sessions:
+    - name: Ping
+      description: |
+        Run a ping test against `example.com`
+      command: ping -c 4 example.com
+      autorun: true
+
+    - name: Traceroute
+      description: |
+        Perform a traceroute to `example.com` to map the network path.
+      command: traceroute example.com
+      autorun: false
+
+---
+apiVersion: v1
+kind: Bundle
+metadata:
+  name: DNS
+spec:
+  sessions:
+    - name: Dig (System Resolvers)
+      description: |
+        Do a `+short` dig against `example.com` using the system's configured DNS resolvers.
+      command: dig +short example.com
+      autorun: true
+
+    - name: Dig (Google)
+      description: |
+        Use **Google Public DNS** (`8.8.8.8`) to look up `example.com` and compare results to
+        the system resolver.
+      command: dig @8.8.8.8 +short example.com
+      autorun: true
+
+    - name: Dig (Cloudflare)
+      description: |
+        Use **Cloudflare DNS** (`1.1.1.1`) to look up `example.com` and compare results to
+        the system resolver.
+      command: dig @1.1.1.1 +short example.com
+      autorun: true
+
+    - name: NSLookup
+      command: nslookup google.com
+      autorun: true

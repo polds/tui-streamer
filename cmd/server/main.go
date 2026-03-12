@@ -42,7 +42,7 @@ func main() {
 	var allowed multiFlag
 	flag.Var(&allowed, "allow", "whitelist a binary name (repeat for multiple);\n\t\tomit to allow all commands")
 
-	bundlePath := flag.String("bundle", "", "path to a JSON bundle file that pre-creates sessions with\n\t\toptional auto-execution (see docs for format)")
+	bundlePath := flag.String("bundle", "", "path to a YAML bundle file that pre-creates sessions with\n\t\toptional auto-execution (see docs for format)")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: tui-streamer [flags]\n\nFlags:\n")
@@ -53,7 +53,7 @@ Examples:
   tui-streamer -port 3000 -dir /app     # custom port and working dir
   tui-streamer -allow make -allow npm   # whitelist specific binaries
   tui-streamer -open                    # launch browser automatically
-  tui-streamer -bundle runbook.json     # load a pre-configured session bundle
+  tui-streamer -bundle runbook.yaml     # load a pre-configured session bundle
 `)
 	}
 	flag.Parse()
@@ -67,31 +67,34 @@ Examples:
 	manager := session.NewManager()
 	// Load bundle if requested, creating sessions before the server starts.
 	if *bundlePath != "" {
-		b, err := bundle.Load(*bundlePath)
+		f, err := bundle.Load(*bundlePath)
 		if err != nil {
 			log.Fatalf("bundle: %v", err)
 		}
-		if *title == "" && b.Name != "" {
-			*title = b.Name
+		if *title == "" && f.Name != "" {
+			*title = f.Name
 		}
-		log.Printf("bundle %q: loading %d session(s)", b.Name, len(b.Sessions))
-		for _, entry := range b.Sessions {
-			sess := manager.Create(entry.Name, b.Name)
-			sess.PendingCommand = entry.Command
-			if entry.Auto && entry.Command != "" {
-				opts := executor.Options{
-					Command: strings.Fields(entry.Command),
-					Dir:     *dir,
-					Stdout:  *stdout,
-					Stderr:  *stderr,
-				}
-				if err := sess.Exec(opts); err != nil {
-					log.Printf("bundle: auto-exec %q: %v", entry.Name, err)
+		for _, b := range f.Bundles {
+			log.Printf("bundle %q: loading %d session(s)", b.Name, len(b.Sessions))
+			for _, entry := range b.Sessions {
+				sess := manager.Create(entry.Name, b.Name)
+				sess.PendingCommand = entry.Command
+				sess.Description = entry.Description
+				if entry.Autorun && entry.Command != "" {
+					opts := executor.Options{
+						Command: strings.Fields(entry.Command),
+						Dir:     *dir,
+						Stdout:  *stdout,
+						Stderr:  *stderr,
+					}
+					if err := sess.Exec(opts); err != nil {
+						log.Printf("bundle: auto-exec %q: %v", entry.Name, err)
+					} else {
+						log.Printf("bundle: auto-exec %q: started", entry.Name)
+					}
 				} else {
-					log.Printf("bundle: auto-exec %q: started", entry.Name)
+					log.Printf("bundle: created %q (manual execution)", entry.Name)
 				}
-			} else {
-				log.Printf("bundle: created %q (manual execution)", entry.Name)
 			}
 		}
 	}

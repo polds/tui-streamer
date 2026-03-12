@@ -662,6 +662,73 @@ body {
   border: 1px solid color-mix(in srgb, var(--danger) 25%, transparent);
 }
 
+/* ── Session description (Markdown) ──────────────────────────── */
+.term-description {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-panel) 80%, var(--bg));
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.55;
+  max-height: 180px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+/* Markdown element styles — scoped inside .term-description */
+.term-description .md-h1,
+.term-description .md-h2,
+.term-description .md-h3 {
+  font-weight: 600;
+  color: var(--text);
+  margin: 8px 0 4px;
+}
+.term-description .md-h1 { font-size: 15px; }
+.term-description .md-h2 { font-size: 14px; }
+.term-description .md-h3 { font-size: 13px; }
+
+.term-description .md-p {
+  margin: 4px 0;
+}
+.term-description .md-p:first-child { margin-top: 0; }
+.term-description .md-p:last-child  { margin-bottom: 0; }
+
+.term-description .md-ul {
+  margin: 4px 0 4px 18px;
+  padding: 0;
+}
+.term-description .md-ul li { margin: 2px 0; }
+
+.term-description .md-pre {
+  margin: 6px 0;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
+}
+
+.term-description .md-code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  color: var(--accent);
+}
+
+.term-description .md-link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.term-description .md-link:hover { color: var(--accent-hover); }
+
 /* ── Terminal hint (empty-session overlay) ────────────────────── */
 .terminal-hint {
   flex: 1;

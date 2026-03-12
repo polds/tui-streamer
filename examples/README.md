@@ -4,6 +4,22 @@ This directory contains practical examples demonstrating how to use tui-streamer
 
 ## Available Examples
 
+### [Network Troubleshooting Bundle](network-bundle/)
+
+A multi-document YAML bundle file with connectivity and DNS diagnostic sessions.
+
+**Key concepts:**
+- `BundleSet` grouping multiple `Bundle` documents in one file
+- `autorun` sessions that execute on load
+- `description` fields rendered as Markdown in the UI
+
+**Quick start:**
+```bash
+tui-streamer -bundle network-bundle/bundle.yaml -open
+```
+
+---
+
 ### [Lorem Ipsum Streamer](lorem-ipsum/)
 
 Demonstrates fetching content from an external API and streaming it line-by-line to the terminal UI.
