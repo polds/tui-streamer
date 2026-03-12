@@ -152,6 +152,26 @@ func main() {
 		})
 	}()
 
+	// WKWebView does not wire up the standard macOS Edit-menu responder actions
+	// (copy:, paste:, selectAll:, etc.) because the app has no NSMenu with those
+	// items.  Inject a capture-phase keydown listener so that the common macOS
+	// keyboard shortcuts still work inside the web content.
+	wv.Init(`(function () {
+		document.addEventListener('keydown', function (e) {
+			if (!e.metaKey) return;
+			switch (e.key) {
+				case 'a': document.execCommand('selectAll', false); break;
+				case 'c': document.execCommand('copy',      false); break;
+				case 'x': document.execCommand('cut',       false); break;
+				case 'v': document.execCommand('paste',     false); break;
+				case 'z':
+					if (e.shiftKey) document.execCommand('redo', false);
+					else            document.execCommand('undo', false);
+					break;
+			}
+		}, true /* capture */);
+	})();`)
+
 	// Bind a function to open the native macOS file picker
 	wv.Bind("openFileDialog", func() (string, error) {
 		cmd := exec.Command("osascript", "-e", `POSIX path of (choose file with prompt "Select a bundle.json" of type {"public.json"})`)
