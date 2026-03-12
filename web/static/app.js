@@ -948,7 +948,19 @@ class App {
 
   async _killActive() {
     if (!this.activeId) return;
-    await api.killSession(this.activeId);
+    // Give instant visual feedback so the user knows the kill registered.
+    const origHtml = this.$killBtn.innerHTML;
+    this.$killBtn.disabled = true;
+    this.$killBtn.innerHTML = 'Killing…';
+    try {
+      await api.killSession(this.activeId);
+    } finally {
+      // Restore after a short delay; the exit event will update the sidebar state.
+      setTimeout(() => {
+        this.$killBtn.innerHTML = origHtml;
+        this.$killBtn.disabled = false;
+      }, 1500);
+    }
   }
 
   _toggleScroll() {

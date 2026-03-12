@@ -109,6 +109,12 @@ func (s *Session) Exec(opts executor.Options) error {
 			cancel()
 		}()
 		for line := range lines {
+			// Once the context is cancelled (kill requested), stop broadcasting
+			// stdout/stderr lines so the terminal stops updating immediately.
+			// We still let the exit event through so the UI reflects the new state.
+			if ctx.Err() != nil && line.Type != executor.LineTypeExit {
+				continue
+			}
 			data, err := json.Marshal(line)
 			if err != nil {
 				continue
