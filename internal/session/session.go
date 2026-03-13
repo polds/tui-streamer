@@ -11,8 +11,9 @@ import (
 )
 
 // maxLineBuf is the maximum number of output lines retained for replay to
-// clients that connect after execution has already started.
-const maxLineBuf = 10_000
+// clients that connect after execution has already started. Kept modest to
+// avoid excessive memory use when long-running commands produce lots of output.
+const maxLineBuf = 2_000
 
 // Session is a named execution context. Multiple WebSocket clients can
 // subscribe and all receive the same streamed output from any executed command.
@@ -108,6 +109,12 @@ func (s *Session) Exec(opts executor.Options) error {
 			cancel()
 		}()
 		for line := range lines {
+			// Once the context is cancelled (kill requested), stop broadcasting
+			// stdout/stderr lines so the terminal stops updating immediately.
+			// We still let the exit event through so the UI reflects the new state.
+			if ctx.Err() != nil && line.Type != executor.LineTypeExit {
+				continue
+			}
 			data, err := json.Marshal(line)
 			if err != nil {
 				continue

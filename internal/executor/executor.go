@@ -10,6 +10,11 @@ import (
 	"time"
 )
 
+// waitDelay is how long to wait for I/O to drain after the process exits/is
+// killed before forcibly closing the pipes. Prevents goroutine leaks when a
+// process ignores signals or produces huge amounts of buffered output.
+const waitDelay = 5 * time.Second
+
 // LineType classifies a streamed output line.
 type LineType string
 
@@ -53,6 +58,9 @@ func Run(ctx context.Context, opts Options) (<-chan Line, error) {
 	if len(opts.Env) > 0 {
 		cmd.Env = opts.Env
 	}
+	// After context cancellation, forcibly close pipes after waitDelay so
+	// scanner goroutines are never stranded waiting for output that won't come.
+	cmd.WaitDelay = waitDelay
 
 	out := make(chan Line, 256)
 
@@ -68,10 +76,14 @@ func Run(ctx context.Context, opts Options) (<-chan Line, error) {
 			defer wg.Done()
 			sc := bufio.NewScanner(pipe)
 			for sc.Scan() {
-				out <- Line{
+				select {
+				case out <- Line{
 					Type:      LineTypeStdout,
 					Data:      sc.Text(),
 					Timestamp: time.Now().UnixMilli(),
+				}:
+				case <-ctx.Done():
+					return
 				}
 			}
 		}()
@@ -87,10 +99,14 @@ func Run(ctx context.Context, opts Options) (<-chan Line, error) {
 			defer wg.Done()
 			sc := bufio.NewScanner(pipe)
 			for sc.Scan() {
-				out <- Line{
+				select {
+				case out <- Line{
 					Type:      LineTypeStderr,
 					Data:      sc.Text(),
 					Timestamp: time.Now().UnixMilli(),
+				}:
+				case <-ctx.Done():
+					return
 				}
 			}
 		}()
