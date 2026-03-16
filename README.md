@@ -143,8 +143,10 @@ go build -o dist/tui-streamer.exe ./cmd/server
    ```bash
    curl -X POST http://localhost:8080/api/sessions/{session-id}/exec \
      -H "Content-Type: application/json" \
-     -d '{"command": "ls", "args": ["-la"]}'
+     -d '{"command": ["ls", "-la"]}'
    ```
+   The `command` field accepts either a JSON array (`["ls", "-la"]`) or a plain
+   string (`"ls -la"`) that is split on whitespace.
 
 4. **Watch the output stream** in your browser at `http://localhost:8080`
 
@@ -304,7 +306,7 @@ a command does and how to interpret its results.
 # Start server with command whitelisting
 tui-streamer -allow make -allow npm -port 3000
 
-# Execute a build
+# Execute a build (command as a string or array)
 curl -X POST http://localhost:3000/api/sessions/{id}/exec \
   -H "Content-Type: application/json" \
   -d '{"command": "make build"}'
@@ -317,22 +319,39 @@ tui-streamer
 
 curl -X POST http://localhost:8080/api/sessions/{id}/exec \
   -H "Content-Type: application/json" \
-  -d '{"command": "tail -f /var/log/app.log"}'
+  -d '{"command": ["tail", "-f", "/var/log/app.log"]}'
 ```
 
 ### REST API
 
 #### Sessions
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/sessions` | List all sessions |
-| `POST` | `/api/sessions` | Create a new session |
-| `GET` | `/api/sessions/{id}` | Get a single session |
-| `DELETE` | `/api/sessions/{id}` | Delete a session |
-| `POST` | `/api/sessions/{id}/exec` | Execute a command in a session |
-| `POST` | `/api/sessions/{id}/kill` | Kill the running process |
-| `POST` | `/api/bundles` | Import a YAML bundle (creates sessions) |
+| Method | Endpoint | Request body | Response |
+|--------|----------|-------------|----------|
+| `GET` | `/api/sessions` | — | `200` JSON array of session info objects |
+| `POST` | `/api/sessions` | `{"name":"..."}` | `201` session info object |
+| `GET` | `/api/sessions/{id}` | — | `200` session info object |
+| `DELETE` | `/api/sessions/{id}` | — | `204` (also kills any running process) |
+| `POST` | `/api/sessions/{id}/exec` | see below | `202 {"status":"started"}` or `409` if already running |
+| `POST` | `/api/sessions/{id}/kill` | — | `204` |
+| `POST` | `/api/bundles` | raw YAML bundle body | `201 {"status":"imported"}` or `409` if already imported |
+
+#### Exec request body
+
+```json
+{
+  "command": ["ls", "-la"],
+  "dir":     "/optional/working/directory",
+  "env":     ["KEY=value"],
+  "stdout":  true,
+  "stderr":  true
+}
+```
+
+- `command` — required. JSON array of strings **or** a plain string split on whitespace.
+- `dir` — optional override for the working directory (defaults to the server's `-dir` flag).
+- `env` — optional list of `KEY=value` pairs that **replace** the process environment entirely.
+- `stdout` / `stderr` — optional booleans to override the server's `-stdout`/`-stderr` defaults.
 
 #### WebSocket
 
@@ -340,13 +359,13 @@ Connect to `ws://localhost:8080/ws/{session-id}` to receive real-time output.
 
 **Message Format:**
 ```json
-{
-  "type": "stdout",
-  "timestamp": "2024-01-01T00:00:00Z",
-  "data": "output line\n",
-  "exit_code": 0
-}
+{"type":"stdout","timestamp":1700000000123,"data":"output line"}
+{"type":"exit","timestamp":1700000000456,"exit_code":0}
 ```
+
+- `timestamp` — Unix epoch in **milliseconds** (`int64`)
+- `data` — present on `stdout`, `stderr`, and `error` lines; omitted on `start` and `exit`
+- `exit_code` — present only on `exit` lines
 
 **Message Types:** `start`, `stdout`, `stderr`, `exit`, `error`
 
@@ -453,11 +472,9 @@ Switch themes via the dropdown in the web UI. Your preference is saved to `local
 Contributions are welcome! Areas for improvement:
 
 - [ ] Unit tests (no test coverage currently exists)
-- [ ] CI/CD pipelines
-- [ ] Session output persistence / history replay
+- [ ] Session output persistence / history replay across server restarts
 - [ ] Authentication / access control
 - [ ] Windows packaging scripts
-- [ ] Pre-built binaries for releases
 
 Please open an issue before starting work on major features.
 
