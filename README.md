@@ -143,7 +143,7 @@ go build -o dist/tui-streamer.exe ./cmd/server
    ```bash
    curl -X POST http://localhost:8080/api/sessions/{session-id}/exec \
      -H "Content-Type: application/json" \
-     -d '{"command": "ls", "args": ["-la"]}'
+     -d '{"command": ["ls", "-la"]}'
    ```
 
 4. **Watch the output stream** in your browser at `http://localhost:8080`
@@ -342,11 +342,12 @@ Connect to `ws://localhost:8080/ws/{session-id}` to receive real-time output.
 ```json
 {
   "type": "stdout",
-  "timestamp": "2024-01-01T00:00:00Z",
-  "data": "output line\n",
-  "exit_code": 0
+  "timestamp": 1704067200100,
+  "data": "output line"
 }
 ```
+
+`timestamp` is a Unix millisecond integer. `exit_code` (int) is only present on `exit` messages. `data` is omitted on `start` and `exit` messages.
 
 **Message Types:** `start`, `stdout`, `stderr`, `exit`, `error`
 
