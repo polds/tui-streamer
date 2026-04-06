@@ -143,7 +143,7 @@ go build -o dist/tui-streamer.exe ./cmd/server
    ```bash
    curl -X POST http://localhost:8080/api/sessions/{session-id}/exec \
      -H "Content-Type: application/json" \
-     -d '{"command": "ls", "args": ["-la"]}'
+     -d '{"command": ["ls", "-la"]}'
    ```
 
 4. **Watch the output stream** in your browser at `http://localhost:8080`
@@ -340,13 +340,12 @@ Connect to `ws://localhost:8080/ws/{session-id}` to receive real-time output.
 
 **Message Format:**
 ```json
-{
-  "type": "stdout",
-  "timestamp": "2024-01-01T00:00:00Z",
-  "data": "output line\n",
-  "exit_code": 0
-}
+{"type":"start","timestamp":1704067200000}
+{"type":"stdout","timestamp":1704067200100,"data":"output line"}
+{"type":"exit","timestamp":1704067200300,"exit_code":0}
 ```
+
+`timestamp` is a Unix millisecond integer. `data` is omitted on `start`/`exit`; `exit_code` is present only on `exit`.
 
 **Message Types:** `start`, `stdout`, `stderr`, `exit`, `error`
 
@@ -453,8 +452,7 @@ Switch themes via the dropdown in the web UI. Your preference is saved to `local
 Contributions are welcome! Areas for improvement:
 
 - [ ] Unit tests (no test coverage currently exists)
-- [ ] CI/CD pipelines
-- [ ] Session output persistence / history replay
+- [ ] Session output persistence / history replay across server restarts
 - [ ] Authentication / access control
 - [ ] Windows packaging scripts
 - [ ] Pre-built binaries for releases
