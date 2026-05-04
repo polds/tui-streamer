@@ -54,8 +54,11 @@ All examples assume you've built tui-streamer first:
 # From the project root
 make build
 
-# For macOS app examples
-make app-webview
+# For macOS app examples (native WKWebView window, macOS + Xcode required)
+make app
+
+# For headless macOS app examples (no CGO required)
+make app-server
 ```
 
 ---
