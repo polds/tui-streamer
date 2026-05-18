@@ -128,7 +128,7 @@ go build -o dist/tui-streamer.exe ./cmd/server
 
 1. **Start the server:**
    ```bash
-   ./tui-streamer -open
+   ./dist/tui-streamer -open
    ```
    This starts the server on port 8080 and opens your browser automatically.
 
@@ -143,7 +143,7 @@ go build -o dist/tui-streamer.exe ./cmd/server
    ```bash
    curl -X POST http://localhost:8080/api/sessions/{session-id}/exec \
      -H "Content-Type: application/json" \
-     -d '{"command": "ls", "args": ["-la"]}'
+     -d '{"command": ["ls", "-la"]}'
    ```
 
 4. **Watch the output stream** in your browser at `http://localhost:8080`
@@ -185,7 +185,7 @@ See the [examples README](examples/README.md) for more details and ideas for cre
 ### Command-Line Flags
 
 ```
-./tui-streamer [flags]
+./dist/tui-streamer [flags]
 
 Flags:
   -port string    Port to listen on (default: 8080)
@@ -340,13 +340,15 @@ Connect to `ws://localhost:8080/ws/{session-id}` to receive real-time output.
 
 **Message Format:**
 ```json
-{
-  "type": "stdout",
-  "timestamp": "2024-01-01T00:00:00Z",
-  "data": "output line\n",
-  "exit_code": 0
-}
+{"type":"start","timestamp":1704067200000}
+{"type":"stdout","timestamp":1704067200123,"data":"output line"}
+{"type":"stderr","timestamp":1704067200456,"data":"error text"}
+{"type":"exit","timestamp":1704067200789,"exit_code":0}
 ```
+
+- `timestamp` is a Unix epoch value in **milliseconds** (integer).
+- `data` is omitted on `start` and `exit` messages.
+- `exit_code` is only present on `exit` messages; a non-zero value indicates failure.
 
 **Message Types:** `start`, `stdout`, `stderr`, `exit`, `error`
 
