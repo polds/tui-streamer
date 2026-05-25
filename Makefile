@@ -3,7 +3,9 @@ BINARY_NAME := tui-streamer
 VERSION     ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 
 ifneq ($(BUNDLE),)
-  BUNDLE_NAME := $(shell python3 -c "import sys, json; d=json.load(open('$(BUNDLE)')); print(d.get('name') or d.get('Name', ''))" 2>/dev/null)
+  # Extract the top-level metadata.name from the YAML bundle file.
+  # Reads the first document's metadata block using a regex so no yaml module is needed.
+  BUNDLE_NAME := $(shell python3 -c "import re,sys; d=open('$(BUNDLE)').read().split('\n---')[0]; m=re.search(r'metadata:\s*\n\s+name:\s*(.+)', d); print(m.group(1).strip() if m else '')" 2>/dev/null)
   ifneq ($(BUNDLE_NAME),)
     APP_NAME := $(BUNDLE_NAME)
   endif
