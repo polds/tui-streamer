@@ -143,7 +143,7 @@ go build -o dist/tui-streamer.exe ./cmd/server
    ```bash
    curl -X POST http://localhost:8080/api/sessions/{session-id}/exec \
      -H "Content-Type: application/json" \
-     -d '{"command": "ls", "args": ["-la"]}'
+     -d '{"command": ["ls", "-la"]}'
    ```
 
 4. **Watch the output stream** in your browser at `http://localhost:8080`
@@ -188,16 +188,19 @@ See the [examples README](examples/README.md) for more details and ideas for cre
 ./tui-streamer [flags]
 
 Flags:
-  -port string    Port to listen on (default: 8080)
-  -dir string     Default working directory for executed commands (default: .)
-  -title string   Window / browser-tab title
+  -port string    Port to listen on (default: "8080")
+  -dir string     Default working directory for executed commands (default: ".")
+  -title string   Window / browser-tab title (defaults to tui-streamer or bundle name)
   -stdout         Capture stdout (default true)
   -stderr         Capture stderr (default true)
-  -allow string   Whitelist a binary name; repeat for multiple
+  -allow string   Whitelist a binary name; repeat the flag for each allowed command
                   (omit to allow all commands)
-  -bundle string  Path to a YAML bundle file that pre-creates sessions
+                  e.g. -allow make -allow npm -allow go
+  -bundle string  Path to a YAML bundle file that pre-creates sessions on startup
   -open           Auto-launch browser on startup
 ```
+
+> **Note:** `-allow` matches the first token of the command (the binary name) only. Specify it once per allowed binary.
 
 ### Bundles
 
@@ -301,13 +304,18 @@ a command does and how to interpret its results.
 #### Monitor a Build Process
 
 ```bash
-# Start server with command whitelisting
+# Start server with command whitelisting (specify -allow once per binary)
 tui-streamer -allow make -allow npm -port 3000
 
-# Execute a build
+# Execute a build (command as a string — split on whitespace automatically)
 curl -X POST http://localhost:3000/api/sessions/{id}/exec \
   -H "Content-Type: application/json" \
   -d '{"command": "make build"}'
+
+# Or pass as a JSON array to avoid ambiguous whitespace splitting
+curl -X POST http://localhost:3000/api/sessions/{id}/exec \
+  -H "Content-Type: application/json" \
+  -d '{"command": ["make", "build"]}'
 ```
 
 #### Tail Logs in Real-time
@@ -334,6 +342,30 @@ curl -X POST http://localhost:8080/api/sessions/{id}/exec \
 | `POST` | `/api/sessions/{id}/kill` | Kill the running process |
 | `POST` | `/api/bundles` | Import a YAML bundle (creates sessions) |
 
+#### Exec Request Body
+
+`POST /api/sessions/{id}/exec` accepts JSON:
+
+```json
+{
+  "command": "ls -la",
+  "dir": "/tmp",
+  "env": ["FOO=bar"],
+  "stdout": true,
+  "stderr": true
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `command` | string or array | yes | Plain string is split on whitespace; array is used as-is |
+| `dir` | string | no | Working directory override (falls back to server `-dir` flag) |
+| `env` | string array | no | Environment variables in `KEY=VALUE` format |
+| `stdout` | bool | no | Capture stdout (falls back to server `-stdout` flag) |
+| `stderr` | bool | no | Capture stderr (falls back to server `-stderr` flag) |
+
+Returns `202 Accepted` with `{"status":"started"}` on success, or `409 Conflict` if a command is already running.
+
 #### WebSocket
 
 Connect to `ws://localhost:8080/ws/{session-id}` to receive real-time output.
@@ -342,13 +374,21 @@ Connect to `ws://localhost:8080/ws/{session-id}` to receive real-time output.
 ```json
 {
   "type": "stdout",
-  "timestamp": "2024-01-01T00:00:00Z",
-  "data": "output line\n",
-  "exit_code": 0
+  "timestamp": 1704067200100,
+  "data": "output line"
 }
 ```
 
-**Message Types:** `start`, `stdout`, `stderr`, `exit`, `error`
+The `timestamp` field is **Unix time in milliseconds** (int64), not an ISO-8601 string.
+
+| Field | Type | Present on | Description |
+|-------|------|------------|-------------|
+| `type` | string | all | `start`, `stdout`, `stderr`, `exit`, or `error` |
+| `timestamp` | int64 | all | Unix epoch in milliseconds |
+| `data` | string | stdout, stderr, error | Line text (no trailing newline) |
+| `exit_code` | int | exit only | Process exit code (0 = success) |
+
+Late-joining clients automatically receive a replay of up to 2,000 buffered output lines before live streaming begins.
 
 ---
 
