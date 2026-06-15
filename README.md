@@ -342,11 +342,13 @@ Connect to `ws://localhost:8080/ws/{session-id}` to receive real-time output.
 ```json
 {
   "type": "stdout",
-  "timestamp": "2024-01-01T00:00:00Z",
+  "timestamp": 1718409600123,
   "data": "output line\n",
   "exit_code": 0
 }
 ```
+
+> `timestamp` is a Unix epoch in **milliseconds** (`int64`). `exit_code` is only present on `exit` messages.
 
 **Message Types:** `start`, `stdout`, `stderr`, `exit`, `error`
 
@@ -405,6 +407,7 @@ tui-streamer/
 │   └── server/       # HTTP/WebSocket server entry point
 ├── internal/
 │   ├── browser/      # Cross-platform browser launcher
+│   ├── bundle/       # YAML bundle/BundleSet parser
 │   ├── executor/     # Command execution engine
 │   ├── server/       # HTTP routes and WebSocket handler
 │   └── session/      # Session management and client connections
@@ -452,9 +455,8 @@ Switch themes via the dropdown in the web UI. Your preference is saved to `local
 
 Contributions are welcome! Areas for improvement:
 
-- [ ] Unit tests (no test coverage currently exists)
-- [ ] CI/CD pipelines
-- [ ] Session output persistence / history replay
+- [ ] Unit tests (no `*_test.go` files currently exist; CI runs `go test ./...` but there is nothing to test yet)
+- [ ] Full session output persistence — new subscribers receive a replay of up to 2 000 buffered lines from the current run, but output is not persisted across server restarts
 - [ ] Authentication / access control
 - [ ] Windows packaging scripts
 - [ ] Pre-built binaries for releases

@@ -55,7 +55,7 @@ Run the packaged macOS app with native WKWebView.
 
 **Prerequisites:**
 - macOS only
-- App bundle must be built: `make app` or `make app-webview`
+- App bundle must be built: `make app` (WKWebView) or `make app-server` (headless)
 
 ```bash
 # From the examples/lorem-ipsum directory
@@ -204,7 +204,7 @@ make build
 ```bash
 # Build the app first
 cd ../..
-make app-webview
+make app
 ```
 
 ### "Permission denied"
