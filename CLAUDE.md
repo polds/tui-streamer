@@ -22,6 +22,7 @@ tui-streamer/
 │   └── server/main.go       # HTTP/WebSocket server entry point
 ├── internal/
 │   ├── browser/open.go      # Cross-platform browser launcher
+│   ├── bundle/bundle.go     # YAML Bundle/BundleSet parser and loader
 │   ├── executor/executor.go # Command execution engine (streaming output)
 │   ├── server/server.go     # HTTP routes and WebSocket upgrade handler
 │   └── session/
@@ -32,8 +33,10 @@ tui-streamer/
 │   ├── embed.go             # Go embed directive for static assets
 │   └── static/
 │       ├── index.html       # Web UI markup
-│       ├── style.css        # Styling with 6 themes
-│       └── app.js           # Vanilla JS frontend (no framework/build step)
+│       ├── style.css        # Styling with 10 themes
+│       └── app.js           # Vanilla JS frontend (10 themes, no framework/build step)
+├── .github/
+│   └── workflows/           # CI (lint + test matrix), release, release-please
 ├── build/darwin/
 │   ├── Info.plist           # macOS app bundle metadata
 │   └── entitlements.plist   # macOS code signing entitlements
@@ -58,23 +61,30 @@ The backend uses a **session-based multiplexing** model:
 3. **Executor** (`internal/executor/executor.go`) — Spawns a process, reads stdout/stderr concurrently in separate goroutines, and emits `Line` structs (JSON) with timestamps and line type (`stdout`, `stderr`, `start`, `exit`, `error`).
 4. **Client** (`internal/session/client.go`) — Wraps a `gorilla/websocket` connection with read/write pumps, a 256-element buffered send channel, ping/pong keepalive (54s), and `sync.Once`-guarded cleanup.
 5. **Server** (`internal/server/server.go`) — HTTP mux with:
-   - `GET /` — serves embedded static files
+   - `GET /` — serves embedded static files (injects `window.STARTUP_BUNDLE` and page title)
    - `GET /ws/{id}` — upgrades to WebSocket, creates a Client, registers it to the session
    - `GET /api/sessions` — list all sessions
    - `POST /api/sessions` — create session
-   - `DELETE /api/sessions/{id}` — delete session
+   - `GET /api/sessions/{id}` — get a single session
+   - `DELETE /api/sessions/{id}` — delete session (kills any running process first)
    - `POST /api/sessions/{id}/exec` — execute command in session
    - `POST /api/sessions/{id}/kill` — kill running process
+   - `POST /api/bundles` — import a YAML bundle (max 4 MiB); creates sessions and optionally autoruns them
+6. **Bundle** (`internal/bundle/bundle.go`) — YAML parser supporting two document kinds:
+   - `Bundle` — named collection of sessions with optional `command`, `description`, `autorun`
+   - `BundleSet` — ordered references to multiple `Bundle` documents in the same file
+   - Multi-document files separated by `---` are fully supported
 
 ### Frontend (Vanilla JS)
 
 `web/static/app.js` is a single-file application with no build step:
 
-- **`AnsiParser`** — Converts ANSI SGR escape sequences to safe HTML spans (supports bold, dim, italic, underline, standard/256/true-color fg & bg).
+- **`AnsiParser`** — Converts ANSI SGR escape sequences to safe HTML spans (supports bold, dim, italic, underline, blink, standard/256/true-color fg & bg).
+- **`MarkdownRenderer`** — Lightweight in-browser Markdown renderer (headings, paragraphs, lists, fenced code, bold/italic/inline-code/links) used for session `description` fields.
 - **`api`** — Thin wrapper over `fetch()` for all REST endpoints.
-- **`SessionSocket`** — WebSocket wrapper with 2s auto-reconnect.
-- **`Terminal`** — Renders output lines with auto-scroll.
-- **`App`** — Main controller: session creation/deletion, command dispatch, theme persistence (localStorage), per-session output buffering for replay.
+- **`SessionSocket`** — WebSocket wrapper with 500ms auto-reconnect.
+- **`Terminal`** — Renders output lines with auto-scroll; DOM is pruned at 2 000 lines to limit memory use.
+- **`App`** — Main controller: session creation/deletion, command dispatch, bundle import, theme persistence (`localStorage`), per-session output buffering (up to 2 000 lines) for replay when switching sessions.
 
 ### Data Flow
 
@@ -116,9 +126,9 @@ make lint           # go vet ./...
 
 # macOS-specific
 make build-darwin   # universal binary (arm64 + amd64 via lipo)
-make app            # create .app bundle (headless server mode)
-make app-webview    # create .app bundle with WKWebView window
-make dmg            # create distributable .dmg
+make app            # create .app bundle with native WKWebView window
+make app-server     # create .app bundle (headless server, opens browser)
+make dmg            # create distributable .dmg (requires make app first)
 
 # Clean
 make clean
@@ -130,12 +140,15 @@ make clean
 ./dist/tui-streamer [flags]
 
 Flags:
-  -port int       Port to listen on (default: 8080)
-  -dir string     Working directory for executed commands
-  -stdout string  Override stdout for spawned commands
-  -stderr string  Override stderr for spawned commands
-  -allow string   Comma-separated command whitelist (e.g. "ls,cat,echo")
-  -open           Auto-launch browser on startup
+  -port string    TCP port to listen on (default: "8080")
+  -title string   Window/tab title (defaults to bundle name or "TUI Streamer")
+  -dir string     Default working directory for executed commands (default: ".")
+  -stdout         Capture stdout from spawned commands (default true)
+  -stderr         Capture stderr from spawned commands (default true)
+  -allow string   Whitelist a binary name; repeat for multiple binaries
+                  (omit to allow all commands)
+  -bundle string  Path to a YAML bundle file that pre-creates sessions
+  -open           Auto-launch browser on startup (default true inside .app bundles)
 ```
 
 ### Adding a New REST Endpoint
@@ -179,15 +192,18 @@ Flags:
 
 ### WebSocket Protocol
 
-Messages are newline-delimited JSON objects:
+Messages are newline-delimited JSON objects. `timestamp` is a Unix epoch in **milliseconds** (`int64`). `exit_code` is only present on `exit` messages.
+
 ```json
-{"type":"start","timestamp":"2024-01-01T00:00:00Z","data":"","exit_code":0}
-{"type":"stdout","timestamp":"2024-01-01T00:00:00.1Z","data":"hello\n","exit_code":0}
-{"type":"stderr","timestamp":"2024-01-01T00:00:00.2Z","data":"error text\n","exit_code":0}
-{"type":"exit","timestamp":"2024-01-01T00:00:00.3Z","data":"","exit_code":0}
+{"type":"start","timestamp":1718409600000,"data":""}
+{"type":"stdout","timestamp":1718409600100,"data":"hello"}
+{"type":"stderr","timestamp":1718409600200,"data":"error text"}
+{"type":"exit","timestamp":1718409600300,"data":"","exit_code":0}
 ```
 
 Line types: `start`, `stdout`, `stderr`, `exit`, `error`.
+
+New WebSocket subscribers immediately receive a replay of up to 2 000 lines buffered from the current (or most recent) execution before live output begins.
 
 ---
 
@@ -197,7 +213,8 @@ Line types: `start`, `stdout`, `stderr`, `exit`, `error`.
 |---|---|
 | `github.com/google/uuid` | Session ID generation |
 | `github.com/gorilla/websocket` | WebSocket server implementation |
-| `webview/webview_go` | macOS native WebView (CGO, darwin only, not in go.mod) |
+| `github.com/webview/webview_go` | macOS native WKWebView window (CGO, darwin only; used by `cmd/app`) |
+| `gopkg.in/yaml.v3` | YAML bundle file parsing |
 
 Go standard library is used for HTTP, JSON, process execution, embedding, and synchronization — no web framework.
 
@@ -220,14 +237,13 @@ The `scripts/package-macos.sh` script:
 3. Optionally code-signs with a provided identity or ad-hoc (`-`).
 4. Optionally creates a `.dmg` with `hdiutil`.
 
-Use `make app` for a headless server app, `make app-webview` for a windowed app with WKWebView.
+Use `make app` for a windowed WKWebView app, `make app-server` for a headless server app that opens the browser automatically.
 
 ---
 
 ## What Does Not Exist Yet (Contribution Opportunities)
 
-- Unit tests (no `*_test.go` files currently exist)
-- CI/CD pipelines (no `.github/workflows/`)
-- Session output persistence / history replay on page load
+- Unit tests (no `*_test.go` files currently exist; CI runs `go test ./...` but there is nothing to test yet)
+- Full session output persistence — new subscribers receive a replay of up to 2 000 lines buffered in-memory, but output is not persisted across server restarts
 - Authentication / access control
 - Windows packaging scripts
