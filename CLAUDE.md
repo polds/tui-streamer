@@ -22,6 +22,7 @@ tui-streamer/
 │   └── server/main.go       # HTTP/WebSocket server entry point
 ├── internal/
 │   ├── browser/open.go      # Cross-platform browser launcher
+│   ├── bundle/bundle.go     # YAML bundle/BundleSet parser and loader
 │   ├── executor/executor.go # Command execution engine (streaming output)
 │   ├── server/server.go     # HTTP routes and WebSocket upgrade handler
 │   └── session/
@@ -32,7 +33,7 @@ tui-streamer/
 │   ├── embed.go             # Go embed directive for static assets
 │   └── static/
 │       ├── index.html       # Web UI markup
-│       ├── style.css        # Styling with 6 themes
+│       ├── style.css        # Styling with 10 themes
 │       └── app.js           # Vanilla JS frontend (no framework/build step)
 ├── build/darwin/
 │   ├── Info.plist           # macOS app bundle metadata
@@ -42,7 +43,7 @@ tui-streamer/
 ├── go.mod                   # Go module (github.com/polds/tui-streamer)
 ├── go.sum                   # Dependency checksums
 ├── Makefile                 # Build, test, lint, packaging targets
-└── README.md                # Minimal project description
+└── README.md                # Project documentation
 ```
 
 ---
@@ -53,28 +54,37 @@ tui-streamer/
 
 The backend uses a **session-based multiplexing** model:
 
-1. **Session** (`internal/session/session.go`) — Named execution context. Holds state (ID, name, timestamps, running flag), a map of subscribed WebSocket clients, and a cancel function for the running process.
+1. **Session** (`internal/session/session.go`) — Named execution context. Holds state (ID, name, timestamps, running flag), a map of subscribed WebSocket clients, and a cancel function for the running process. Buffers the last 2,000 output lines so late-joining WebSocket clients receive prior output on connect.
 2. **Manager** (`internal/session/manager.go`) — Thread-safe registry (UUID → `*Session`). Provides Create/Get/List/Delete.
-3. **Executor** (`internal/executor/executor.go`) — Spawns a process, reads stdout/stderr concurrently in separate goroutines, and emits `Line` structs (JSON) with timestamps and line type (`stdout`, `stderr`, `start`, `exit`, `error`).
-4. **Client** (`internal/session/client.go`) — Wraps a `gorilla/websocket` connection with read/write pumps, a 256-element buffered send channel, ping/pong keepalive (54s), and `sync.Once`-guarded cleanup.
-5. **Server** (`internal/server/server.go`) — HTTP mux with:
-   - `GET /` — serves embedded static files
+3. **Executor** (`internal/executor/executor.go`) — Spawns a process, reads stdout/stderr concurrently in separate goroutines, and emits `Line` structs (JSON) with Unix-millisecond timestamps and line type (`stdout`, `stderr`, `start`, `exit`, `error`). A 5-second `WaitDelay` ensures pipes are forcibly closed after context cancellation.
+4. **Bundle** (`internal/bundle/bundle.go`) — Parses multi-document YAML files into `Bundle` and `BundleSet` structs. Supports `kind: Bundle` (sessions list) and `kind: BundleSet` (ordered references to named Bundles in the same file). Used both by the CLI (`-bundle` flag) and the `/api/bundles` endpoint.
+5. **Client** (`internal/session/client.go`) — Wraps a `gorilla/websocket` connection with read/write pumps, a 256-element buffered send channel, ping/pong keepalive (54s ping period, 60s pong wait), and `sync.Once`-guarded cleanup. Messages dropped (not buffered) when the send channel is full.
+6. **Server** (`internal/server/server.go`) — HTTP mux with:
+   - `GET /` — serves embedded static files, injects `<title>` and `window.STARTUP_BUNDLE`
    - `GET /ws/{id}` — upgrades to WebSocket, creates a Client, registers it to the session
-   - `GET /api/sessions` — list all sessions
+   - `GET /api/sessions` — list all sessions (sorted by creation time)
    - `POST /api/sessions` — create session
-   - `DELETE /api/sessions/{id}` — delete session
+   - `GET /api/sessions/{id}` — get a single session
+   - `DELETE /api/sessions/{id}` — delete session (also kills any running process)
    - `POST /api/sessions/{id}/exec` — execute command in session
    - `POST /api/sessions/{id}/kill` — kill running process
+   - `POST /api/bundles` — import a YAML bundle (creates sessions; rejects duplicate bundle names)
 
 ### Frontend (Vanilla JS)
 
 `web/static/app.js` is a single-file application with no build step:
 
-- **`AnsiParser`** — Converts ANSI SGR escape sequences to safe HTML spans (supports bold, dim, italic, underline, standard/256/true-color fg & bg).
+- **`AnsiParser`** — Converts ANSI SGR escape sequences to safe HTML spans (supports bold, dim, italic, underline, blink, standard/256/true-color fg & bg). All text content is HTML-escaped before attribute injection.
+- **`MarkdownRenderer`** — Minimal safe Markdown renderer used for bundle session descriptions. Supports headings (h1–h3), paragraphs, unordered lists, fenced code blocks, and inline bold/italic/code/links.
 - **`api`** — Thin wrapper over `fetch()` for all REST endpoints.
-- **`SessionSocket`** — WebSocket wrapper with 2s auto-reconnect.
-- **`Terminal`** — Renders output lines with auto-scroll.
-- **`App`** — Main controller: session creation/deletion, command dispatch, theme persistence (localStorage), per-session output buffering for replay.
+- **`SessionSocket`** — WebSocket wrapper with 500ms auto-reconnect on disconnect.
+- **`Terminal`** — Renders output lines with auto-scroll. Caps the DOM at 2,000 `terminal-line` nodes (oldest pruned); event banners (`start`/`exit`/`error`) are not counted toward the cap.
+- **`App`** — Main controller: session creation/deletion, command dispatch, theme persistence (localStorage), per-session in-memory output buffer (2,000 lines) for replay when switching sessions. Detects interactive/curses commands (`top`, `vim`, `less`, etc.) and shows a warning rather than running them.
+
+Key global constants in `app.js`:
+- `MAX_BUFFER = 2000` — lines kept per-session in the JS replay buffer
+- `MAX_DOM_LINES = 2000` — maximum `terminal-line` nodes in the DOM at once
+- `INTERACTIVE_COMMANDS` — set of command names that require a real TTY and are blocked with a warning
 
 ### Data Flow
 
@@ -115,10 +125,13 @@ make test           # go test ./...
 make lint           # go vet ./...
 
 # macOS-specific
-make build-darwin   # universal binary (arm64 + amd64 via lipo)
-make app            # create .app bundle (headless server mode)
-make app-webview    # create .app bundle with WKWebView window
-make dmg            # create distributable .dmg
+make build-darwin       # universal binary (arm64 + amd64 via lipo)
+make app                # create .app bundle with native WKWebView window (requires macOS + Xcode/CGO)
+make app-server         # create headless .app bundle that opens UI in the default browser (cross-compilable)
+make dmg                # create distributable .dmg (requires make app first)
+
+# Package a bundle YAML into a named .app (name comes from BundleSet/Bundle metadata)
+make app BUNDLE=./examples/network-bundle/bundle.yaml
 
 # Clean
 make clean
@@ -130,17 +143,34 @@ make clean
 ./dist/tui-streamer [flags]
 
 Flags:
-  -port int       Port to listen on (default: 8080)
-  -dir string     Working directory for executed commands
-  -stdout string  Override stdout for spawned commands
-  -stderr string  Override stderr for spawned commands
-  -allow string   Comma-separated command whitelist (e.g. "ls,cat,echo")
-  -open           Auto-launch browser on startup
+  -port string    TCP port to listen on (default: "8080")
+  -dir string     Default working directory for executed commands (default: ".")
+  -title string   Window / browser-tab title (defaults to bundle name or "TUI Streamer")
+  -stdout         Capture stdout (default true)
+  -stderr         Capture stderr (default true)
+  -allow string   Whitelist a binary name; repeat the flag for multiple binaries
+                  (omit to allow all commands)
+  -bundle string  Path to a YAML bundle file that pre-creates sessions on startup
+  -open           Auto-launch browser on startup (always true inside a macOS .app)
 ```
+
+The `-allow` flag can be repeated: `-allow make -allow npm`. Whitelisting is enforced on the first token of the command string. An empty allowlist permits everything.
+
+### Exec Request Body
+
+`POST /api/sessions/{id}/exec` accepts a JSON body with these fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `command` | string or `[]string` | **Required.** Command to run. A plain string is split on whitespace; an array is used as-is. |
+| `dir` | string | Working directory override for this request (falls back to server `-dir`). |
+| `env` | `[]string` | Additional environment variables in `"KEY=VALUE"` form (replaces the inherited environment entirely when set). |
+| `stdout` | bool | Per-request override for stdout capture (defaults to server `-stdout`). |
+| `stderr` | bool | Per-request override for stderr capture (defaults to server `-stderr`). |
 
 ### Adding a New REST Endpoint
 
-1. Add the route in `internal/server/server.go` inside `NewServer()` mux setup.
+1. Add the route in `internal/server/server.go` inside `routes()`.
 2. Write the handler as a method on `*Server` or a closure.
 3. Access `s.manager` for session operations.
 4. Respond with JSON using `json.NewEncoder(w).Encode(...)`.
@@ -179,15 +209,22 @@ Flags:
 
 ### WebSocket Protocol
 
-Messages are newline-delimited JSON objects:
+Messages are JSON objects sent as WebSocket text frames, one per line of output:
 ```json
-{"type":"start","timestamp":"2024-01-01T00:00:00Z","data":"","exit_code":0}
-{"type":"stdout","timestamp":"2024-01-01T00:00:00.1Z","data":"hello\n","exit_code":0}
-{"type":"stderr","timestamp":"2024-01-01T00:00:00.2Z","data":"error text\n","exit_code":0}
-{"type":"exit","timestamp":"2024-01-01T00:00:00.3Z","data":"","exit_code":0}
+{"type":"start","timestamp":1719072000000}
+{"type":"stdout","timestamp":1719072000123,"data":"hello"}
+{"type":"stderr","timestamp":1719072000456,"data":"error text"}
+{"type":"exit","timestamp":1719072001000,"exit_code":0}
+{"type":"error","timestamp":1719072001001,"data":"signal: killed"}
 ```
 
-Line types: `start`, `stdout`, `stderr`, `exit`, `error`.
+Field details:
+- `type` — one of `start`, `stdout`, `stderr`, `exit`, `error`
+- `timestamp` — Unix epoch in **milliseconds** (integer, not ISO string)
+- `data` — output text for `stdout`/`stderr`/`error`; omitted for `start`/`exit`
+- `exit_code` — integer exit code, present only on `exit` messages
+
+When a client connects to an active or completed session, it receives a replay of up to 2,000 buffered lines before live messages begin. The replay is delivered synchronously during `subscribe()` before the client enters its write loop.
 
 ---
 
@@ -220,7 +257,24 @@ The `scripts/package-macos.sh` script:
 3. Optionally code-signs with a provided identity or ad-hoc (`-`).
 4. Optionally creates a `.dmg` with `hdiutil`.
 
-Use `make app` for a headless server app, `make app-webview` for a windowed app with WKWebView.
+Use `make app` for a windowed app with WKWebView (requires macOS + Xcode), or `make app-server` for a headless server app that opens the UI in the default browser (cross-compilable from Linux/Windows using `make build-darwin` first).
+
+---
+
+### Bundle Package
+
+`internal/bundle/bundle.go` parses multi-document YAML files. Rules:
+
+- A file may contain multiple `---`-separated YAML documents.
+- Each document must have `apiVersion: v1` and `kind: Bundle` or `kind: BundleSet`.
+- A `BundleSet` lists `Bundle` documents by `metadata.name`; all referenced Bundles must be in the same file.
+- Without a `BundleSet`, all `Bundle` documents are loaded in document order.
+- The `File.Name` is set from the `BundleSet` name when present, or the first `Bundle` name otherwise.
+- Unknown `kind` values (including empty documents) return a parse error or are silently skipped (empty/blank documents only).
+
+Bundle entries support: `name` (required), `command` (optional), `description` (optional Markdown), `autorun` (bool, default false).
+
+When imported via `/api/bundles`, a bundle is rejected if any `Bundle` in the file shares a name with an already-imported bundle, preventing accidental double-import.
 
 ---
 
@@ -228,6 +282,6 @@ Use `make app` for a headless server app, `make app-webview` for a windowed app 
 
 - Unit tests (no `*_test.go` files currently exist)
 - CI/CD pipelines (no `.github/workflows/`)
-- Session output persistence / history replay on page load
 - Authentication / access control
 - Windows packaging scripts
+- TTY emulation (interactive/curses apps such as `top`, `vim`, `less` are intentionally blocked with a warning)

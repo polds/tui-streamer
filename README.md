@@ -143,7 +143,7 @@ go build -o dist/tui-streamer.exe ./cmd/server
    ```bash
    curl -X POST http://localhost:8080/api/sessions/{session-id}/exec \
      -H "Content-Type: application/json" \
-     -d '{"command": "ls", "args": ["-la"]}'
+     -d '{"command": ["ls", "-la"]}'
    ```
 
 4. **Watch the output stream** in your browser at `http://localhost:8080`
@@ -298,6 +298,18 @@ a command does and how to interpret its results.
 
 ### Examples
 
+#### Exec Request Body
+
+`POST /api/sessions/{id}/exec` accepts:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `command` | string or array | **Required.** A plain string is split on whitespace; an array is used as-is. |
+| `dir` | string | Working directory for this command (overrides server `-dir`). |
+| `env` | `[]string` | Environment variables as `"KEY=VALUE"` strings. |
+| `stdout` | bool | Capture stdout for this command (overrides server `-stdout`). |
+| `stderr` | bool | Capture stderr for this command (overrides server `-stderr`). |
+
 #### Monitor a Build Process
 
 ```bash
@@ -342,13 +354,18 @@ Connect to `ws://localhost:8080/ws/{session-id}` to receive real-time output.
 ```json
 {
   "type": "stdout",
-  "timestamp": "2024-01-01T00:00:00Z",
-  "data": "output line\n",
-  "exit_code": 0
+  "timestamp": 1719072000123,
+  "data": "output line"
 }
 ```
 
-**Message Types:** `start`, `stdout`, `stderr`, `exit`, `error`
+**Fields:**
+- `type` — `start`, `stdout`, `stderr`, `exit`, or `error`
+- `timestamp` — Unix epoch in **milliseconds** (integer)
+- `data` — output text; omitted for `start` and `exit`
+- `exit_code` — integer exit code, present only on `exit` messages
+
+Connecting to a session that has already produced output replays up to 2,000 buffered lines before live messages begin.
 
 ---
 
