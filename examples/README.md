@@ -30,7 +30,7 @@ theme, and a command allowlist.
 - `metadata.appIcon` for packaged macOS `.app` icons
 - `spec.theme` + a single-entry `spec.themes` (hides the theme picker)
 - `spec.allow` command allowlist
-- `spec.files` staged into `TUI_PATH` for `$(TUI_PATH)/demo-tool`
+- `spec.files` staged into `TUI_PATH` for `${TUI_PATH}/demo-tool`
 
 **Quick start:**
 ```bash

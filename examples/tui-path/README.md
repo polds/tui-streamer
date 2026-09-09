@@ -20,11 +20,12 @@ make build
 The **Demo Tool** session autoruns:
 
 ```bash
-$(TUI_PATH)/demo-tool hello from bundle
+"${TUI_PATH}/demo-tool" hello from bundle
 ```
 
-tui-streamer expands `$(TUI_PATH)` (and `$TUI_PATH` / `${TUI_PATH}`), sets the
-`TUI_PATH` environment variable, and prepends that directory to `PATH`.
+tui-streamer injects `TUI_PATH` as an environment variable and prepends that
+directory to `PATH`. Command tokens also expand `${TUI_PATH}`, `$TUI_PATH`, and
+`$(TUI_PATH)` so a YAML `command:` can reference the helper directly.
 
 ## Packaging
 

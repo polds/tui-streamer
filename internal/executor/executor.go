@@ -42,7 +42,7 @@ type Options struct {
 	Stdout  bool
 	Stderr  bool
 	// TUIPath, when set, is exported as TUI_PATH, prepended to PATH, and
-	// substituted for $(TUI_PATH) / ${TUI_PATH} / $TUI_PATH in Command.
+	// substituted for ${TUI_PATH} / $TUI_PATH / $(TUI_PATH) in Command.
 	TUIPath string
 }
 

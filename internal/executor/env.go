@@ -5,9 +5,9 @@ import (
 	"strings"
 )
 
-// ExpandTUIPath replaces $(TUI_PATH), ${TUI_PATH}, and $TUI_PATH in each
-// command token. This matches both Makefile-style bundle YAML and shell
-// parameter expansion so scripts can write $(TUI_PATH)/gum.
+// ExpandTUIPath replaces ${TUI_PATH}, $TUI_PATH, and $(TUI_PATH) in each
+// command token so a YAML command: field can reference TUI_PATH without a
+// shell. Executed processes also receive TUI_PATH as an environment variable.
 func ExpandTUIPath(command []string, tuiPath string) []string {
 	if tuiPath == "" || len(command) == 0 {
 		return command

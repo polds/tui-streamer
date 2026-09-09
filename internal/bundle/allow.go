@@ -39,7 +39,7 @@ func MergeAllowlists(cli, fromBundle []string) []string {
 // An empty allowed list means every command is permitted.
 //
 // Matching is by exact token or by filepath.Base so that
-// "$(TUI_PATH)/gum", "/usr/bin/ping", and "ping" all match an allow
+// "${TUI_PATH}/gum", "/usr/bin/ping", and "ping" all match an allow
 // entry of "ping" or "gum".
 func CommandAllowed(allowed []string, command []string) bool {
 	if len(allowed) == 0 {

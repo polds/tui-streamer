@@ -27,11 +27,12 @@ spec:
   sessions:
     - name: Demo Tool
       description: |
-        Runs the bundled `demo-tool` binary via `$(TUI_PATH)`.
+        Runs the bundled `demo-tool` binary via `${TUI_PATH}`.
 
         tui-streamer copies `spec.files` into a directory and exports that
-        path as **TUI_PATH** (and prepends it to `PATH`) on every command.
-      command: $(TUI_PATH)/demo-tool hello from bundle
+        path as the **TUI_PATH** environment variable (and prepends it to
+        `PATH`) on every command.
+      command: ${TUI_PATH}/demo-tool hello from bundle
       autorun: true
 
     - name: Env Check

@@ -308,7 +308,7 @@ Built-in theme names: `catppuccin-macchiato` (default), `catppuccin-latte`,
 `filepath.Base`). **Merge semantics:** if either CLI `-allow` or `spec.allow` is
 set, the effective allowlist is the **union** of both. If neither is set, every
 command is allowed (historical default). Matching is by basename, so
-`$(TUI_PATH)/gum` is allowed when `gum` is listed.
+`${TUI_PATH}/gum` is allowed when `gum` is listed.
 
 `POST /api/bundles` merges `spec.allow` into the running server the same way.
 
@@ -321,12 +321,12 @@ Paths are resolved relative to the bundle YAML. `dest` is optional and must be
 a relative path under `TUI_PATH` (no `..`). Execute bits are preserved.
 
 ```bash
-$(TUI_PATH)/gum spin --spinner dot --title "Buying Bubble Gum..." -- sleep 5
+"${TUI_PATH}/gum" spin --spinner dot --title "Buying Bubble Gum..." -- sleep 5
 ```
 
-`$(TUI_PATH)`, `${TUI_PATH}`, and `$TUI_PATH` are expanded in command tokens.
-Scripts that run under a shell can also read the `TUI_PATH` environment
-variable.
+`TUI_PATH` is injected as an environment variable on every executed command.
+Command tokens also expand `${TUI_PATH}`, `$TUI_PATH`, and `$(TUI_PATH)` so a
+YAML `command:` field can reference the helper without wrapping in `sh -c`.
 
 - **Runtime** (`tui-streamer -bundle ./file.yaml`): files next to the YAML are
   copied into a per-bundle cache directory.

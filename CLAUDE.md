@@ -62,7 +62,7 @@ The backend uses a **session-based multiplexing** model:
 1. **Bundle** (`internal/bundle/`) — YAML parser for bundle files. Supports two document kinds: `Bundle` (a named group of sessions) and `BundleSet` (an ordered list of `Bundle` references). A single file may contain multiple `---`-separated YAML documents. Exposes `Load(path)` and `Parse(data)`. File-level options (`appIcon`, `theme`, `themes`, `allow`, `files`) live on the `BundleSet` (or the first `Bundle` when there is no set). Extra files are staged into `TUI_PATH`; allowlists merge with CLI `-allow` as a union.
 2. **Session** (`internal/session/session.go`) — Named execution context. Holds state (ID, name, timestamps, running flag), a map of subscribed WebSocket clients, a cancel function for the running process, and a bounded replay buffer (up to 2,000 lines) so clients that connect after execution started receive prior output. Also carries optional bundle metadata: `PendingCommand`, `BundleName`, and `Description`.
 3. **Manager** (`internal/session/manager.go`) — Thread-safe registry (UUID → `*Session`). Provides Create/Get/List/Delete.
-4. **Executor** (`internal/executor/executor.go`) — Spawns a process, reads stdout/stderr concurrently in separate goroutines, and emits `Line` structs with Unix-millisecond timestamps and line type (`stdout`, `stderr`, `start`, `exit`, `error`). After the process exits or is cancelled, pipes are forcibly closed after a 5-second drain delay to prevent goroutine leaks. When `TUIPath` is set, it is exported as `TUI_PATH`, prepended to `PATH`, and substituted for `$(TUI_PATH)` / `${TUI_PATH}` / `$TUI_PATH` in the command.
+4. **Executor** (`internal/executor/executor.go`) — Spawns a process, reads stdout/stderr concurrently in separate goroutines, and emits `Line` structs with Unix-millisecond timestamps and line type (`stdout`, `stderr`, `start`, `exit`, `error`). After the process exits or is cancelled, pipes are forcibly closed after a 5-second drain delay to prevent goroutine leaks. When `TUIPath` is set, it is exported as the `TUI_PATH` environment variable, prepended to `PATH`, and substituted for `${TUI_PATH}` / `$TUI_PATH` / `$(TUI_PATH)` in the command.
 5. **Client** (`internal/session/client.go`) — Wraps a `gorilla/websocket` connection with read/write pumps, a 256-element buffered send channel, ping/pong keepalive (ping every 54s, 60s pong timeout), and `sync.Once`-guarded cleanup. Messages are dropped (never block) when the buffer is full.
 6. **Server** (`internal/server/server.go`) — HTTP mux with:
    - `GET /` — serves embedded static files (with server-side title, startup-bundle, and theme-config injection)
@@ -164,7 +164,7 @@ tui-streamer -allow make -allow npm -allow go
 
 CLI `-allow` is **unioned** with bundle `spec.allow`. If neither is set, all
 commands are allowed. Matching uses the command's basename, so a bundled
-`$(TUI_PATH)/gum` is allowed when `gum` is listed.
+`${TUI_PATH}/gum` is allowed when `gum` is listed.
 
 **Notes on `-bundle`**: the bundle's `BundleSet` or top-level `Bundle` `metadata.name` is used as the window title unless `-title` is also provided. Sessions with `autorun: true` start executing immediately on server startup. File-level options (`appIcon`, `theme`, `themes`, `allow`, `files`) come from the `BundleSet` when present, otherwise from the first `Bundle`.
 
@@ -291,9 +291,9 @@ allowed. `POST /api/bundles` merges `spec.allow` into the running server.
 
 **`TUI_PATH`:** listed files/directories are copied (execute bits preserved)
 into a cache dir at `-bundle` startup, or into `Contents/Resources/tui` when
-packaging. That directory is exported as `TUI_PATH` and prepended to `PATH`.
-Command tokens expand `$(TUI_PATH)`, `${TUI_PATH}`, and `$TUI_PATH`.
-`POST /api/bundles` cannot stage files (no on-disk tree).
+packaging. That directory is exported as the `TUI_PATH` environment variable
+and prepended to `PATH`. Command tokens also expand `${TUI_PATH}`, `$TUI_PATH`,
+and `$(TUI_PATH)`. `POST /api/bundles` cannot stage files (no on-disk tree).
 
 **Themes:** `spec.theme` is the default; `spec.themes` is the picker allowlist.
 A single-entry list hides the picker. Persisted `localStorage` themes outside
