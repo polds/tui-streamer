@@ -130,8 +130,10 @@ func sanitizeDest(dest, absSource string) (string, error) {
 	if dest == "" {
 		dest = filepath.Base(absSource)
 	}
+	if filepath.IsAbs(dest) || strings.HasPrefix(filepath.ToSlash(dest), "/") {
+		return "", fmt.Errorf("dest must be a relative path, got %q", dest)
+	}
 	dest = filepath.ToSlash(dest)
-	dest = strings.TrimPrefix(dest, "/")
 	clean := filepath.Clean(dest)
 	if clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(os.PathSeparator)) {
 		return "", fmt.Errorf("invalid dest %q", dest)
