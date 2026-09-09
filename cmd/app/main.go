@@ -26,7 +26,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -47,10 +46,9 @@ func (f *multiFlag) Set(v string) error { *f = append(*f, v); return nil }
 
 func main() {
 	defaultTitle := "TUI Streamer"
-	bundlePath := getBundlePath()
 	var b *bundle.File
-	if bundlePath != "" {
-		if loaded, err := bundle.Load(bundlePath); err == nil {
+	if path := bundle.PackagedPath(); path != "" {
+		if loaded, err := bundle.Load(path); err == nil {
 			b = loaded
 			if b.Name != "" {
 				defaultTitle = b.Name
@@ -298,21 +296,4 @@ func splashHTML(title string) string {
 </body>
 </html>`
 	return strings.Replace(html, "{{TITLE}}", title, 1)
-}
-
-// getBundlePath returns the path to a bundle YAML file packaged inside
-// the .app bundle. Checks for bundle.yaml, then bundle.yml as fallbacks.
-func getBundlePath() string {
-	exe, err := os.Executable()
-	if err != nil {
-		return ""
-	}
-	resourcesDir := filepath.Join(filepath.Dir(exe), "../Resources")
-	for _, name := range []string{"bundle.yaml", "bundle.yml"} {
-		p := filepath.Join(resourcesDir, name)
-		if _, err := os.Stat(p); err == nil {
-			return p
-		}
-	}
-	return ""
 }

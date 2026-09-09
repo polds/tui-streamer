@@ -42,7 +42,11 @@ func main() {
 	var allowed multiFlag
 	flag.Var(&allowed, "allow", "whitelist a binary name (repeat for multiple);\n\t\tomit to allow all commands")
 
-	bundlePath := flag.String("bundle", "", "path to a YAML bundle file that pre-creates sessions with\n\t\toptional auto-execution (see docs for format)")
+	var defaultBundle string
+	if insideAppBundle() {
+		defaultBundle = bundle.PackagedPath()
+	}
+	bundlePath := flag.String("bundle", defaultBundle, "path to a YAML bundle file that pre-creates sessions with\n\t\toptional auto-execution (see docs for format)")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: tui-streamer [flags]\n\nFlags:\n")

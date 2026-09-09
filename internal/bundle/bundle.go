@@ -45,6 +45,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"gopkg.in/yaml.v3"
 )
@@ -196,4 +197,21 @@ func Parse(data []byte) (*File, error) {
 	}
 
 	return file, nil
+}
+
+// PackagedPath returns Contents/Resources/bundle.yaml (or .yml) next to the
+// executable, or "" if neither file exists.
+func PackagedPath() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	dir := filepath.Join(filepath.Dir(exe), "..", "Resources")
+	for _, name := range []string{"bundle.yaml", "bundle.yml"} {
+		p := filepath.Join(dir, name)
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
 }

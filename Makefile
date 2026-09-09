@@ -3,9 +3,14 @@ BINARY_NAME := tui-streamer
 VERSION     ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 
 ifneq ($(BUNDLE),)
-  BUNDLE_NAME := $(shell python3 -c "import sys, json; d=json.load(open('$(BUNDLE)')); print(d.get('name') or d.get('Name', ''))" 2>/dev/null)
+  ifeq ($(wildcard $(BUNDLE)),)
+    $(error BUNDLE file not found: $(BUNDLE))
+  endif
+  BUNDLE_NAME := $(shell python3 scripts/bundle-name.py "$(BUNDLE)")
   ifneq ($(BUNDLE_NAME),)
     APP_NAME := $(BUNDLE_NAME)
+  else
+    $(warning could not read metadata.name from $(BUNDLE); using $(APP_NAME))
   endif
   BUNDLE_FLAG := --bundle "$(BUNDLE)"
 else
