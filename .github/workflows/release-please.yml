@@ -4,30 +4,56 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: write
   pull-requests: write
+  issues: write
 
 jobs:
   release-please:
     name: Open / update release PR
     runs-on: ubuntu-latest
     outputs:
-      release_created: ${{ steps.rp.outputs.release_created }}
-      tag_name:        ${{ steps.rp.outputs.tag_name }}
-      version:         ${{ steps.rp.outputs.version }}
+      release_created: ${{ steps.rp.outputs.release_created || steps.rp_retry.outputs.release_created }}
+      tag_name:        ${{ steps.rp.outputs.tag_name || steps.rp_retry.outputs.tag_name }}
+      version:         ${{ steps.rp.outputs.version || steps.rp_retry.outputs.version }}
     steps:
-      - uses: googleapis/release-please-action@v4
+      # v5 runs on Node 24 (v4 is Node 20, which GitHub Actions is deprecating)
+      # and pulls in a newer release-please with smaller GraphQL commit batches.
+      - uses: googleapis/release-please-action@v5
         id: rp
+        continue-on-error: true
         with:
-          # Personal-access token (or fine-grained PAT) with repo + pull-request
-          # write scopes.  Create it at:
-          #   https://github.com/settings/tokens
-          # then store it as a repository secret named RELEASE_PLEASE_TOKEN.
-          # Falls back to the built-in GITHUB_TOKEN if the secret is absent,
-          # which works for public repos but may lack PR-creation rights on
-          # private repos.
+          # PAT or GitHub App token with contents + pull-requests write.
+          # Required when the repo has "Allow GitHub Actions to create and
+          # approve pull requests" disabled: GITHUB_TOKEN cannot open PRs.
+          # Create a fine-grained PAT and store it as RELEASE_PLEASE_TOKEN,
+          # or enable that Actions setting so the fallback GITHUB_TOKEN works.
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+      # GitHub GraphQL sometimes returns HTTP 200 with
+      # "Something went wrong while executing your query" when fetching merge
+      # commits. release-please does not retry that class of error (only 502).
+      - name: Retry after transient GitHub GraphQL errors
+        if: steps.rp.outcome == 'failure'
+        uses: googleapis/release-please-action@v5
+        id: rp_retry
+        continue-on-error: true
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      - name: Fail if release-please did not succeed
+        if: steps.rp.outcome != 'success' && steps.rp_retry.outcome != 'success'
+        run: |
+          echo "::error::Release Please failed after retry."
+          echo "If the log shows a GraphQL 500 / 'Something went wrong while executing your query', re-run this job."
+          echo "If the log shows 'GitHub Actions is not permitted to create or approve pull requests', either:"
+          echo "  1. Settings → Actions → General → enable 'Allow GitHub Actions to create and approve pull requests', or"
+          echo "  2. Set repository secret RELEASE_PLEASE_TOKEN to a PAT with contents:write and pull-requests:write."
+          exit 1
