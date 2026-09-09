@@ -8,6 +8,7 @@
 #       --version 1.2.3 \
 #       --out-dir dist \
 #       [--dmg] [--sign "Developer ID Application: …"] [--webview]
+#       [--bundle PATH]
 #
 # Flags:
 #   --binary   PATH     Path to the compiled macOS binary (required)
@@ -17,6 +18,7 @@
 #   --dmg               Also create a .dmg after the .app bundle
 #   --sign     IDENTITY Code-sign with this identity (optional)
 #   --webview           Set LSUIElement=false (show Dock icon) for WebView builds
+#   --bundle   PATH     YAML bundle copied to Contents/Resources/bundle.yaml
 #
 set -euo pipefail
 
@@ -80,10 +82,16 @@ mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}"
 cp "${BINARY}" "${MACOS_DIR}/${BINARY_NAME}"
 chmod +x "${MACOS_DIR}/${BINARY_NAME}"
 
-# Copy bundle file if provided
-if [[ -n "${BUNDLE_FILE}" && -f "${BUNDLE_FILE}" ]]; then
-  cp "${BUNDLE_FILE}" "${RESOURCES_DIR}/bundle.json"
-  echo "  ✓ Bundled configuration file"
+# Copy bundle YAML to Contents/Resources so the app finds it at launch.
+if [[ -n "${BUNDLE_FILE}" ]]; then
+  if [[ ! -f "${BUNDLE_FILE}" ]]; then
+    echo "Error: bundle file not found: ${BUNDLE_FILE}" >&2
+    exit 1
+  fi
+  dest="bundle.yaml"
+  [[ "${BUNDLE_FILE##*.}" == "yml" ]] && dest="bundle.yml"
+  cp "${BUNDLE_FILE}" "${RESOURCES_DIR}/${dest}"
+  echo "  ✓ Bundled configuration: ${BUNDLE_FILE} → Contents/Resources/${dest}"
 fi
 
 # Build Info.plist from template
