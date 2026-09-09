@@ -19,10 +19,11 @@ Key capabilities:
 tui-streamer/
 ├── cmd/
 │   ├── app/main.go          # macOS native WebView app entry point (darwin + CGO only)
-│   └── server/main.go       # HTTP/WebSocket server entry point
+│   ├── server/main.go       # HTTP/WebSocket server entry point
+│   └── bundlemeta/main.go   # Packaging helper: name / appIcon / files from YAML
 ├── internal/
 │   ├── browser/open.go      # Cross-platform browser launcher
-│   ├── bundle/bundle.go     # YAML bundle parser (Bundle + BundleSet kinds)
+│   ├── bundle/              # YAML parser, allowlists, TUI_PATH file staging
 │   ├── executor/executor.go # Command execution engine (streaming output)
 │   ├── server/server.go     # HTTP routes and WebSocket upgrade handler
 │   └── session/
@@ -40,6 +41,7 @@ tui-streamer/
 │   └── entitlements.plist   # macOS code signing entitlements
 ├── examples/
 │   ├── network-bundle/      # Multi-bundle network diagnostics example
+│   ├── tui-path/            # appIcon, locked theme, allow, TUI_PATH files
 │   └── lorem-ipsum/         # External API + streaming example
 ├── scripts/
 │   └── package-macos.sh     # macOS .app/.dmg packaging script
@@ -57,13 +59,14 @@ tui-streamer/
 
 The backend uses a **session-based multiplexing** model:
 
-1. **Bundle** (`internal/bundle/bundle.go`) — YAML parser for bundle files. Supports two document kinds: `Bundle` (a named group of sessions) and `BundleSet` (an ordered list of `Bundle` references). A single file may contain multiple `---`-separated YAML documents. Exposes `Load(path)` and `Parse(data)`.
+1. **Bundle** (`internal/bundle/`) — YAML parser for bundle files. Supports two document kinds: `Bundle` (a named group of sessions) and `BundleSet` (an ordered list of `Bundle` references). A single file may contain multiple `---`-separated YAML documents. Exposes `Load(path)` and `Parse(data)`. File-level options (`appIcon`, `theme`, `themes`, `allow`, `files`) live on the `BundleSet` (or the first `Bundle` when there is no set). Extra files are staged into `TUI_PATH`; allowlists merge with CLI `-allow` as a union.
 2. **Session** (`internal/session/session.go`) — Named execution context. Holds state (ID, name, timestamps, running flag), a map of subscribed WebSocket clients, a cancel function for the running process, and a bounded replay buffer (up to 2,000 lines) so clients that connect after execution started receive prior output. Also carries optional bundle metadata: `PendingCommand`, `BundleName`, and `Description`.
 3. **Manager** (`internal/session/manager.go`) — Thread-safe registry (UUID → `*Session`). Provides Create/Get/List/Delete.
-4. **Executor** (`internal/executor/executor.go`) — Spawns a process, reads stdout/stderr concurrently in separate goroutines, and emits `Line` structs with Unix-millisecond timestamps and line type (`stdout`, `stderr`, `start`, `exit`, `error`). After the process exits or is cancelled, pipes are forcibly closed after a 5-second drain delay to prevent goroutine leaks.
+4. **Executor** (`internal/executor/executor.go`) — Spawns a process, reads stdout/stderr concurrently in separate goroutines, and emits `Line` structs with Unix-millisecond timestamps and line type (`stdout`, `stderr`, `start`, `exit`, `error`). After the process exits or is cancelled, pipes are forcibly closed after a 5-second drain delay to prevent goroutine leaks. When `TUIPath` is set, it is exported as the `TUI_PATH` environment variable, prepended to `PATH`, and substituted for `${TUI_PATH}` / `$TUI_PATH` / `$(TUI_PATH)` in the command.
 5. **Client** (`internal/session/client.go`) — Wraps a `gorilla/websocket` connection with read/write pumps, a 256-element buffered send channel, ping/pong keepalive (ping every 54s, 60s pong timeout), and `sync.Once`-guarded cleanup. Messages are dropped (never block) when the buffer is full.
 6. **Server** (`internal/server/server.go`) — HTTP mux with:
-   - `GET /` — serves embedded static files (with server-side title injection)
+   - `GET /` — serves embedded static files (with server-side title, startup-bundle, and theme-config injection)
+   - `GET /api/config` — title, theme default/allowlist, startup-bundle flag
    - `GET /ws/{id}` — upgrades to WebSocket, creates a Client, registers it to the session
    - `GET /api/sessions` — list all sessions
    - `POST /api/sessions` — create session
@@ -81,7 +84,7 @@ The backend uses a **session-based multiplexing** model:
 - **`api`** — Thin wrapper over `fetch()` for all REST endpoints including bundle import.
 - **`SessionSocket`** — WebSocket wrapper with 500ms auto-reconnect on close.
 - **`Terminal`** — Renders output lines with auto-scroll. Caps DOM to `MAX_DOM_LINES` (oldest stdout/stderr lines pruned first; event banners preserved).
-- **`App`** — Main controller: session creation/deletion, command dispatch, kill, line selection/copy, bundle import, theme persistence (localStorage), per-session output buffering for replay.
+- **`App`** — Main controller: session creation/deletion, command dispatch, kill, line selection/copy, bundle import, theme persistence (localStorage, honor bundle allowlist; hide picker when only one theme is available), per-session output buffering for replay.
 
 ### Data Flow
 
@@ -159,7 +162,11 @@ Flags:
 tui-streamer -allow make -allow npm -allow go
 ```
 
-**Notes on `-bundle`**: the bundle's `BundleSet` or top-level `Bundle` `metadata.name` is used as the window title unless `-title` is also provided. Sessions with `autorun: true` start executing immediately on server startup.
+CLI `-allow` is **unioned** with bundle `spec.allow`. If neither is set, all
+commands are allowed. Matching uses the command's basename, so a bundled
+`${TUI_PATH}/gum` is allowed when `gum` is listed.
+
+**Notes on `-bundle`**: the bundle's `BundleSet` or top-level `Bundle` `metadata.name` is used as the window title unless `-title` is also provided. Sessions with `autorun: true` start executing immediately on server startup. File-level options (`appIcon`, `theme`, `themes`, `allow`, `files`) come from the `BundleSet` when present, otherwise from the first `Bundle`.
 
 ### Adding a New REST Endpoint
 
@@ -196,9 +203,10 @@ tui-streamer -allow make -allow npm -allow go
 
 ### Adding a New Theme
 
-1. Add a `body.theme-<name>` block in `web/static/style.css` defining all CSS variables (see existing themes for the full variable list).
-2. Add the option to the `<select id="themeSelect">` in `web/static/index.html`.
-3. No JS changes needed — the `App` class reads the selector value and applies it as a body class.
+1. Add a `[data-theme="<name>"]` block in `web/static/style.css` defining all CSS variables (see existing themes for the full variable list).
+2. Add the option to `<select id="theme-select">` in `web/static/index.html`.
+3. Add the name to `bundle.BuiltInThemes` in `internal/bundle/themes.go` so bundle `spec.themes` validation accepts it.
+4. No other JS changes needed — the `App` class reads the selector and `window.THEME_CONFIG`.
 
 ### WebSocket Protocol
 
@@ -257,11 +265,40 @@ apiVersion: v1
 kind: BundleSet
 metadata:
   name: Network Troubleshooting   # top-level name; becomes window title
+  appIcon: ./icon.svg             # optional SVG for `make app BUNDLE=...`
 spec:
+  theme: nord                     # default UI theme
+  themes:                         # optional allowlist; omit = all built-in themes
+    - nord
+    - dracula
+  allow:                          # optional; unioned with CLI -allow
+    - ping
+    - dig
+  files:                          # staged into TUI_PATH (runtime cache or .app Resources/tui)
+    - source: ./bin/gum
+      dest: gum
   bundles:
     - name: Connectivity          # must match a Bundle metadata.name in the same file
     - name: DNS
 ```
+
+A standalone `Bundle` may declare the same file-level fields on `metadata` /
+`spec`. When a `BundleSet` is present it wins.
+
+**Allowlist merge:** if either CLI `-allow` or `spec.allow` is non-empty, the
+effective list is the union of both. If both are empty, all commands are
+allowed. `POST /api/bundles` merges `spec.allow` into the running server.
+
+**`TUI_PATH`:** listed files/directories are copied (execute bits preserved)
+into a cache dir at `-bundle` startup, or into `Contents/Resources/tui` when
+packaging. That directory is exported as the `TUI_PATH` environment variable
+and prepended to `PATH`. Command tokens also expand `${TUI_PATH}`, `$TUI_PATH`,
+and `$(TUI_PATH)`. `POST /api/bundles` cannot stage files (no on-disk tree).
+
+**Themes:** `spec.theme` is the default; `spec.themes` is the picker allowlist.
+A single-entry list hides the picker. Persisted `localStorage` themes outside
+the allowlist are ignored. Config is injected as `window.THEME_CONFIG` and
+served at `GET /api/config`.
 
 #### Session fields populated from a bundle
 
@@ -297,7 +334,7 @@ Go standard library is used for HTTP, JSON, process execution, embedding, and sy
 
 ## Security Notes
 
-- **Command whitelisting**: use `-allow` flag in production to restrict which commands can be run.
+- **Command whitelisting**: use `-allow` and/or bundle `spec.allow` in production to restrict which commands can be run. The effective list is their union.
 - **No authentication**: the server assumes a trusted local network. Do not expose it publicly without adding auth.
 - **WebSocket origin check** is permissive (`CheckOrigin` returns `true`) — appropriate for local dev, not for multi-tenant deployments.
 - **HTML escaping**: the `AnsiParser` in `app.js` escapes all output before DOM insertion; do not bypass this.
@@ -320,11 +357,17 @@ The `scripts/package-macos.sh` script:
 | `make app-server` | `cmd/server` (no CGO) | Headless server — opens the system browser; cross-compilable |
 | `make dmg` | — | Wraps the `.app` from `make app` in a `.dmg` |
 
-**Bundle packaging:** pass `BUNDLE=<path>` to name the `.app` after the bundle's metadata name:
+**Bundle packaging:** pass `BUNDLE=<path>` to name the `.app` after the bundle's metadata name, copy `spec.files` into `Contents/Resources/tui`, and use `metadata.appIcon` when set:
 
 ```bash
 make app BUNDLE=./examples/network-bundle/bundle.yaml
 # → dist/Network Troubleshooting.app
+
+make app BUNDLE=./examples/tui-path/bundle.yaml
+# → dist/TUI Path Demo.app  (custom icon + Resources/tui)
+
+make icon BUNDLE=./examples/tui-path/bundle.yaml
+# uses metadata.appIcon instead of build/darwin/AppIcon.svg
 ```
 
 **macOS `.app` behaviour quirk:** if the server port is already in use when launched as a `.app`, the process opens the browser to the existing instance and exits cleanly rather than reporting an error — this is handled by `insideAppBundle()` in `cmd/server/main.go`.
@@ -333,7 +376,7 @@ make app BUNDLE=./examples/network-bundle/bundle.yaml
 
 ## What Does Not Exist Yet (Contribution Opportunities)
 
-- Unit tests (no `*_test.go` files currently exist)
+- Broader unit tests (focused parser / allow / TUI_PATH / theme tests exist)
 - Session output persistence / history replay on page load (server-side; the replay buffer is capped at 2,000 lines and lost on process restart)
 - Authentication / access control
 - Windows packaging scripts

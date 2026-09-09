@@ -12,10 +12,29 @@ A multi-document YAML bundle file with connectivity and DNS diagnostic sessions.
 - `BundleSet` grouping multiple `Bundle` documents in one file
 - `autorun` sessions that execute on load
 - `description` fields rendered as Markdown in the UI
+- BundleSet `spec.theme` / `spec.themes` and `spec.allow`
 
 **Quick start:**
 ```bash
 tui-streamer -bundle network-bundle/bundle.yaml -open
+```
+
+---
+
+### [TUI Path Demo](tui-path/)
+
+A BundleSet that ships an extra helper binary, a custom app icon, a locked
+theme, and a command allowlist.
+
+**Key concepts:**
+- `metadata.appIcon` for packaged macOS `.app` icons
+- `spec.theme` + a single-entry `spec.themes` (hides the theme picker)
+- `spec.allow` command allowlist
+- `spec.files` staged into `TUI_PATH` for `${TUI_PATH}/demo-tool`
+
+**Quick start:**
+```bash
+tui-streamer -bundle tui-path/bundle.yaml -open
 ```
 
 ---

@@ -13,7 +13,6 @@ import (
 
 	"github.com/polds/tui-streamer/internal/browser"
 	"github.com/polds/tui-streamer/internal/bundle"
-	"github.com/polds/tui-streamer/internal/executor"
 	"github.com/polds/tui-streamer/internal/server"
 	"github.com/polds/tui-streamer/internal/session"
 	"github.com/polds/tui-streamer/web"
@@ -69,62 +68,64 @@ Examples:
 	}
 
 	manager := session.NewManager()
-	// Load bundle if requested, creating sessions before the server starts.
+
+	var loaded *bundle.File
+	tuiPath := bundle.PackagedTUIPath()
+	bundleAllow := []string(nil)
 	if *bundlePath != "" {
 		f, err := bundle.Load(*bundlePath)
 		if err != nil {
 			log.Fatalf("bundle: %v", err)
 		}
+		loaded = f
 		if *title == "" && f.Name != "" {
 			*title = f.Name
 		}
-		for _, b := range f.Bundles {
-			log.Printf("bundle %q: loading %d session(s)", b.Name, len(b.Sessions))
-			for _, entry := range b.Sessions {
-				sess := manager.Create(entry.Name, b.Name)
-				sess.PendingCommand = entry.Command
-				sess.Description = entry.Description
-				if entry.Autorun && entry.Command != "" {
-					opts := executor.Options{
-						Command: strings.Fields(entry.Command),
-						Dir:     *dir,
-						Stdout:  *stdout,
-						Stderr:  *stderr,
-					}
-					if err := sess.Exec(opts); err != nil {
-						log.Printf("bundle: auto-exec %q: %v", entry.Name, err)
-					} else {
-						log.Printf("bundle: auto-exec %q: started", entry.Name)
-					}
-				} else {
-					log.Printf("bundle: created %q (manual execution)", entry.Name)
-				}
-			}
+		resolved, err := bundle.ResolveTUIPath(*bundlePath, f.Files)
+		if err != nil {
+			log.Fatalf("bundle files: %v", err)
 		}
+		if resolved != "" {
+			tuiPath = resolved
+		}
+		bundleAllow = f.Allow
 	}
 
 	if *title == "" {
 		*title = "TUI Streamer"
 	}
 
+	effectiveAllow := bundle.MergeAllowlists([]string(allowed), bundleAllow)
+
 	cfg := server.Config{
 		Title:            *title,
 		Stdout:           *stdout,
 		Stderr:           *stderr,
 		Dir:              *dir,
-		AllowedCommands:  []string(allowed),
+		AllowedCommands:  effectiveAllow,
 		HasStartupBundle: *bundlePath != "",
+		TUIPath:          tuiPath,
+	}
+	if loaded != nil {
+		cfg.Theme = loaded.Theme
+		cfg.Themes = bundle.FilterThemes(loaded.Themes)
 	}
 
 	srv := server.New(manager, cfg, staticFS)
+	if loaded != nil {
+		srv.ImportFile(loaded)
+	}
 
 	addr := ":" + *port
 	url := "http://localhost" + addr
 	log.Printf("tui-streamer %s listening on %s", version, url)
-	if len(allowed) > 0 {
-		log.Printf("allowed commands: %s", strings.Join(allowed, ", "))
+	if len(effectiveAllow) > 0 {
+		log.Printf("allowed commands: %s", strings.Join(effectiveAllow, ", "))
 	} else {
-		log.Printf("all commands allowed (use -allow to restrict)")
+		log.Printf("all commands allowed (use -allow or bundle spec.allow to restrict)")
+	}
+	if tuiPath != "" {
+		log.Printf("TUI_PATH=%s", tuiPath)
 	}
 
 

@@ -1,0 +1,43 @@
+---
+apiVersion: v1
+kind: BundleSet
+metadata:
+  name: TUI Path Demo
+  appIcon: ./icon.svg
+spec:
+  theme: nord
+  themes:
+    - nord
+  allow:
+    - echo
+    - sh
+    - demo-tool
+  files:
+    - source: ./bin/demo-tool
+      dest: demo-tool
+  bundles:
+    - name: Tools
+
+---
+apiVersion: v1
+kind: Bundle
+metadata:
+  name: Tools
+spec:
+  sessions:
+    - name: Demo Tool
+      description: |
+        Runs the bundled `demo-tool` binary via `${TUI_PATH}`.
+
+        tui-streamer copies `spec.files` into a directory and exports that
+        path as the **TUI_PATH** environment variable (and prepends it to
+        `PATH`) on every command.
+      command: ${TUI_PATH}/demo-tool hello from bundle
+      autorun: true
+
+    - name: Env Check
+      description: |
+        Print `TUI_PATH` from the process environment to confirm the
+        variable is set for scripts that use `$TUI_PATH/demo-tool`.
+      command: sh -c 'echo TUI_PATH=$TUI_PATH && ls -l "$TUI_PATH"'
+      autorun: false

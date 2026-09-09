@@ -41,6 +41,9 @@ type Options struct {
 	Env     []string
 	Stdout  bool
 	Stderr  bool
+	// TUIPath, when set, is exported as TUI_PATH, prepended to PATH, and
+	// substituted for ${TUI_PATH} / $TUI_PATH / $(TUI_PATH) in Command.
+	TUIPath string
 }
 
 // Run starts the command described by opts and returns a channel that receives
@@ -51,12 +54,13 @@ func Run(ctx context.Context, opts Options) (<-chan Line, error) {
 		return nil, fmt.Errorf("no command specified")
 	}
 
-	cmd := exec.CommandContext(ctx, opts.Command[0], opts.Command[1:]...)
+	command := ExpandTUIPath(opts.Command, opts.TUIPath)
+	cmd := exec.CommandContext(ctx, command[0], command[1:]...)
 	if opts.Dir != "" {
 		cmd.Dir = opts.Dir
 	}
-	if len(opts.Env) > 0 {
-		cmd.Env = opts.Env
+	if env := buildEnv(opts.Env, opts.TUIPath); env != nil {
+		cmd.Env = env
 	}
 	// After context cancellation, forcibly close pipes after waitDelay so
 	// scanner goroutines are never stranded waiting for output that won't come.

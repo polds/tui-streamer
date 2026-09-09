@@ -499,6 +499,11 @@ class App {
     this.$scrollBtn   = document.getElementById('btn-scroll');
     this.$killBtn     = document.getElementById('btn-kill');
     this.$themeSelect = document.getElementById('theme-select');
+    this.$themeWrap   = document.getElementById('theme-select-wrap');
+    this._allThemeOptions = Array.from(this.$themeSelect.options).map(o => ({
+      value: o.value,
+      text: o.textContent,
+    }));
 
     this.terminal  = new Terminal(this.$termOutput);
     this.mdRenderer = new MarkdownRenderer();
@@ -533,6 +538,7 @@ class App {
             if (!content) return; // user cancelled
             const file = new File([content], "bundle.json", { type: "application/json" });
             await api.importBundle(file);
+            await this._refreshThemeConfig();
             this._refresh();
           } catch (err) {
             this._uiAlert(`Failed to import bundle from dialog:\n\n${err.message}`);
@@ -602,9 +608,47 @@ class App {
   }
 
   _loadTheme() {
-    const t = localStorage.getItem('tui-theme') || 'catppuccin-macchiato';
+    this._applyThemeConfig(window.THEME_CONFIG || {});
+  }
+
+  async _refreshThemeConfig() {
+    try {
+      const r = await fetch('/api/config');
+      if (!r.ok) return;
+      const cfg = await r.json();
+      this._applyThemeConfig({ default: cfg.theme, themes: cfg.themes });
+    } catch { /* keep the config injected at page load */ }
+  }
+
+  _applyThemeConfig(cfg) {
+    cfg = cfg || {};
+    const known = this._allThemeOptions.map(o => o.value);
+    let allowed = Array.isArray(cfg.themes) && cfg.themes.length
+      ? cfg.themes.filter(t => known.includes(t))
+      : known.slice();
+    if (!allowed.length) allowed = known.slice();
+
+    const fallback = (cfg.default && allowed.includes(cfg.default))
+      ? cfg.default
+      : (allowed.includes('catppuccin-macchiato') ? 'catppuccin-macchiato' : allowed[0]);
+
+    this.$themeSelect.innerHTML = '';
+    for (const opt of this._allThemeOptions) {
+      if (!allowed.includes(opt.value)) continue;
+      const el = document.createElement('option');
+      el.value = opt.value;
+      el.textContent = opt.text;
+      this.$themeSelect.appendChild(el);
+    }
+
+    const stored = localStorage.getItem('tui-theme');
+    const t = (stored && allowed.includes(stored)) ? stored : fallback;
     this.$themeSelect.value = t;
     document.documentElement.setAttribute('data-theme', t === 'dark' ? '' : t);
+
+    if (this.$themeWrap) {
+      this.$themeWrap.classList.toggle('hidden', allowed.length <= 1);
+    }
   }
 
   async _refresh() {
@@ -890,6 +934,7 @@ class App {
     
     try {
       await api.importBundle(file);
+      await this._refreshThemeConfig();
       // Let the _refresh loop naturally pull the new sessions, but we can fast-track
       this._refresh();
     } catch (err) {
