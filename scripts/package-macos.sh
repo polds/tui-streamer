@@ -8,7 +8,7 @@
 #       --version 1.2.3 \
 #       --out-dir dist \
 #       [--dmg] [--sign "Developer ID Application: …"] [--webview]
-#       [--bundle PATH]
+#       [--bundle PATH] [--icon-svg PATH]
 #
 # Flags:
 #   --binary   PATH     Path to the compiled macOS binary (required)
@@ -19,6 +19,7 @@
 #   --sign     IDENTITY Code-sign with this identity (optional)
 #   --webview           Set LSUIElement=false (show Dock icon) for WebView builds
 #   --bundle   PATH     YAML bundle copied to Contents/Resources/bundle.yaml
+#   --icon-svg PATH     Custom SVG used as the app icon (overrides AppIcon.icns)
 #
 set -euo pipefail
 
@@ -31,6 +32,9 @@ CREATE_DMG=false
 SIGN_IDENTITY=""
 WEBVIEW_MODE=false
 BUNDLE_FILE=""
+ICON_SVG=""
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # ── parse arguments ───────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -43,6 +47,7 @@ while [[ $# -gt 0 ]]; do
     --sign)     SIGN_IDENTITY="$2"; shift 2 ;;
     --webview)  WEBVIEW_MODE=true;  shift   ;;
     --bundle)   BUNDLE_FILE="$2";   shift 2 ;;
+    --icon-svg) ICON_SVG="$2";      shift 2 ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
 done
@@ -83,15 +88,49 @@ cp "${BINARY}" "${MACOS_DIR}/${BINARY_NAME}"
 chmod +x "${MACOS_DIR}/${BINARY_NAME}"
 
 # Copy bundle YAML to Contents/Resources so the app finds it at launch.
+# Also stage spec.files into Contents/Resources/tui (TUI_PATH at runtime).
 if [[ -n "${BUNDLE_FILE}" ]]; then
   if [[ ! -f "${BUNDLE_FILE}" ]]; then
     echo "Error: bundle file not found: ${BUNDLE_FILE}" >&2
     exit 1
   fi
+  BUNDLE_FILE="$(cd "$(dirname "${BUNDLE_FILE}")" && pwd)/$(basename "${BUNDLE_FILE}")"
   dest="bundle.yaml"
   [[ "${BUNDLE_FILE##*.}" == "yml" ]] && dest="bundle.yml"
   cp "${BUNDLE_FILE}" "${RESOURCES_DIR}/${dest}"
   echo "  ✓ Bundled configuration: ${BUNDLE_FILE} → Contents/Resources/${dest}"
+
+  if [[ -z "${ICON_SVG}" ]] && command -v go >/dev/null; then
+    ICON_SVG="$(cd "${REPO_ROOT}" && go run ./cmd/bundlemeta -icon "${BUNDLE_FILE}" 2>/dev/null || true)"
+  fi
+
+  if command -v go >/dev/null; then
+    files_list=""
+    if ! files_list="$(cd "${REPO_ROOT}" && go run ./cmd/bundlemeta -files "${BUNDLE_FILE}")"; then
+      echo "Error: could not read spec.files from ${BUNDLE_FILE}" >&2
+      exit 1
+    fi
+    TUI_DIR="${RESOURCES_DIR}/tui"
+    while IFS=$'\t' read -r src dest_rel || [[ -n "${src}" ]]; do
+      [[ -z "${src}" ]] && continue
+      if [[ ! -e "${src}" ]]; then
+        echo "Error: bundle file source not found: ${src}" >&2
+        exit 1
+      fi
+      dest_path="${TUI_DIR}/${dest_rel}"
+      mkdir -p "$(dirname "${dest_path}")"
+      if [[ -d "${src}" ]]; then
+        mkdir -p "${dest_path}"
+        cp -R "${src}/." "${dest_path}/"
+      else
+        cp "${src}" "${dest_path}"
+      fi
+      if [[ -f "${src}" && -x "${src}" ]]; then
+        chmod +x "${dest_path}"
+      fi
+      echo "  ✓ Bundled file: ${src} → Contents/Resources/tui/${dest_rel}"
+    done <<< "${files_list}"
+  fi
 fi
 
 # Build Info.plist from template
@@ -138,9 +177,29 @@ else
 PLIST_EOF
 fi
 
-# Copy app icon if it has been generated (see 'make icon' / scripts/make-icon.sh)
-ICON_SRC="build/darwin/AppIcon.icns"
-if [[ -f "${ICON_SRC}" ]]; then
+# Copy / generate the app icon. A bundle metadata.appIcon SVG (or --icon-svg)
+# takes precedence over the stock build/darwin/AppIcon.icns.
+ICON_SRC="${REPO_ROOT}/build/darwin/AppIcon.icns"
+if [[ -n "${ICON_SVG}" ]]; then
+  if [[ ! -f "${ICON_SVG}" ]]; then
+    echo "Error: icon SVG not found: ${ICON_SVG}" >&2
+    exit 1
+  fi
+  cp "${ICON_SVG}" "${RESOURCES_DIR}/AppIcon.svg"
+  echo "  ✓ App icon SVG: ${ICON_SVG} → Contents/Resources/AppIcon.svg"
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    if bash "${SCRIPT_DIR}/make-icon.sh" "${ICON_SVG}" "${RESOURCES_DIR}/AppIcon.icns"; then
+      echo "  ✓ App icon generated from bundle SVG"
+    else
+      echo "  ⚠ Could not generate .icns from ${ICON_SVG}"
+    fi
+  elif [[ -f "${ICON_SRC}" ]]; then
+    cp "${ICON_SRC}" "${RESOURCES_DIR}/AppIcon.icns"
+    echo "  ⚠ Not on macOS – bundled stock AppIcon.icns (SVG copied for reference)"
+  else
+    echo "  ⚠ No AppIcon.icns generated (iconutil is macOS-only); SVG copied"
+  fi
+elif [[ -f "${ICON_SRC}" ]]; then
   cp "${ICON_SRC}" "${RESOURCES_DIR}/AppIcon.icns"
   echo "  ✓ App icon bundled"
 else

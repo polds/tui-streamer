@@ -245,7 +245,19 @@ apiVersion: v1
 kind: BundleSet
 metadata:
   name: Network Troubleshooting
+  appIcon: ./icon.svg          # optional SVG used by `make app BUNDLE=...`
 spec:
+  theme: nord                  # default UI theme
+  themes:                      # optional allowlist; omit for all built-in themes
+    - nord
+    - dracula
+  allow:                       # optional command allowlist (unioned with -allow)
+    - ping
+    - dig
+    - gum
+  files:                       # extra files/dirs copied into $TUI_PATH
+    - source: ./bin/gum
+      dest: gum                # optional; defaults to the source basename
   bundles:
     - name: Connectivity
     - name: DNS
@@ -274,6 +286,62 @@ spec:
       command: dig +short example.com
       autorun: true
 ```
+
+A standalone `Bundle` (no `BundleSet`) may use the same `metadata.appIcon`,
+`spec.theme`, `spec.themes`, `spec.allow`, and `spec.files` fields. When a
+`BundleSet` is present it is the source of truth for those file-level options.
+
+#### Themes
+
+`spec.theme` is the default. `spec.themes` limits the picker. If `themes` has a
+single entry, the theme dropdown is hidden. A `localStorage` preference is
+ignored when it is not in the allowlist. The server injects the config into
+`index.html` (`window.THEME_CONFIG`) and also exposes `GET /api/config`.
+
+Built-in theme names: `catppuccin-macchiato` (default), `catppuccin-latte`,
+`catppuccin-frappe`, `catppuccin-mocha`, `dark`, `dracula`, `matrix`, `nord`,
+`solarized`, `light`.
+
+#### Command allowlists
+
+`spec.allow` lists binary names (the first token of a command, or its
+`filepath.Base`). **Merge semantics:** if either CLI `-allow` or `spec.allow` is
+set, the effective allowlist is the **union** of both. If neither is set, every
+command is allowed (historical default). Matching is by basename, so
+`$(TUI_PATH)/gum` is allowed when `gum` is listed.
+
+`POST /api/bundles` merges `spec.allow` into the running server the same way.
+
+#### Bundled files and `TUI_PATH`
+
+`spec.files` copies extra files or directories into a known directory that is
+exported as `TUI_PATH` on every executed command (and prepended to `PATH`).
+
+Paths are resolved relative to the bundle YAML. `dest` is optional and must be
+a relative path under `TUI_PATH` (no `..`). Execute bits are preserved.
+
+```bash
+$(TUI_PATH)/gum spin --spinner dot --title "Buying Bubble Gum..." -- sleep 5
+```
+
+`$(TUI_PATH)`, `${TUI_PATH}`, and `$TUI_PATH` are expanded in command tokens.
+Scripts that run under a shell can also read the `TUI_PATH` environment
+variable.
+
+- **Runtime** (`tui-streamer -bundle ./file.yaml`): files next to the YAML are
+  copied into a per-bundle cache directory.
+- **Packaging** (`make app BUNDLE=...`): files are copied to
+  `Contents/Resources/tui`, which becomes `TUI_PATH` inside the `.app`.
+
+`POST /api/bundles` cannot stage files (the YAML arrives without a filesystem
+tree). Use `-bundle` or a packaged app for `spec.files`.
+
+#### Custom app icon
+
+`metadata.appIcon` is an SVG path relative to the bundle file. Packaging uses
+it as the macOS app icon (`make icon BUNDLE=...` / `make app BUNDLE=...`).
+On macOS the SVG is converted to `AppIcon.icns`; the SVG is always copied into
+`Contents/Resources/AppIcon.svg`.
 
 #### Importing via the UI
 
@@ -333,6 +401,7 @@ curl -X POST http://localhost:8080/api/sessions/{id}/exec \
 | `POST` | `/api/sessions/{id}/exec` | Execute a command in a session |
 | `POST` | `/api/sessions/{id}/kill` | Kill the running process |
 | `POST` | `/api/bundles` | Import a YAML bundle (creates sessions) |
+| `GET` | `/api/config` | Title, theme default/allowlist, startup-bundle flag |
 
 #### WebSocket
 
@@ -392,8 +461,10 @@ make app-server
 # Create a distributable .dmg
 make dmg
 
-# Package a specific bundle YAML — the app is named from the BundleSet/Bundle metadata
+# Package a specific bundle YAML — the app is named from the BundleSet/Bundle metadata.
+# spec.files are copied to Contents/Resources/tui; metadata.appIcon becomes the app icon.
 make app BUNDLE=./examples/network-bundle/bundle.yaml
+make app BUNDLE=./examples/tui-path/bundle.yaml
 ```
 
 ### Project Structure
@@ -402,9 +473,11 @@ make app BUNDLE=./examples/network-bundle/bundle.yaml
 tui-streamer/
 ├── cmd/
 │   ├── app/          # macOS native WebView app entry point
-│   └── server/       # HTTP/WebSocket server entry point
+│   ├── server/       # HTTP/WebSocket server entry point
+│   └── bundlemeta/   # Packaging helper (name, appIcon, files)
 ├── internal/
 │   ├── browser/      # Cross-platform browser launcher
+│   ├── bundle/       # YAML bundle parser, allowlists, TUI_PATH staging
 │   ├── executor/     # Command execution engine
 │   ├── server/       # HTTP routes and WebSocket handler
 │   └── session/      # Session management and client connections
@@ -436,12 +509,14 @@ tui-streamer includes 10 carefully crafted color themes:
 - **Light** — Clean light theme
 
 Switch themes via the dropdown in the web UI. Your preference is saved to `localStorage`.
+A bundle may set `spec.theme` / `spec.themes` to choose the default and limit
+(or hide) the picker.
 
 ---
 
 ## Security Considerations
 
-- **Command Whitelisting:** Use the `-allow` flag in production to restrict executable commands
+- **Command Whitelisting:** Use the `-allow` flag and/or bundle `spec.allow` in production to restrict executable commands. When either is set, the effective list is their union.
 - **No Authentication:** The server assumes a trusted local network. **Do not expose publicly** without adding authentication
 - **HTML Escaping:** All output is automatically escaped to prevent XSS attacks
 - **Origin Checks:** WebSocket origin validation is permissive for local development
@@ -452,7 +527,7 @@ Switch themes via the dropdown in the web UI. Your preference is saved to `local
 
 Contributions are welcome! Areas for improvement:
 
-- [ ] Unit tests (no test coverage currently exists)
+- [ ] Broader unit tests (bundle parser / allow / TUI_PATH helpers now have focused tests)
 - [ ] CI/CD pipelines
 - [ ] Session output persistence / history replay
 - [ ] Authentication / access control

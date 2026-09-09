@@ -9,10 +9,10 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/gorilla/websocket"
 	"github.com/polds/tui-streamer/internal/bundle"
-	"github.com/polds/tui-streamer/internal/executor"
 	"github.com/polds/tui-streamer/internal/session"
 )
 
@@ -40,12 +40,19 @@ type Config struct {
 	AllowedCommands []string
 	// HasStartupBundle indicates if a bundle was loaded on server startup.
 	HasStartupBundle bool
+	// Theme is the default UI theme name. Empty uses the built-in default.
+	Theme string
+	// Themes, when non-empty, is the allowlist of theme names shown in the UI.
+	Themes []string
+	// TUIPath is exported as TUI_PATH on executed commands. Empty means unset.
+	TUIPath string
 }
 
 // Server wires together the session manager and HTTP mux.
 type Server struct {
 	manager *session.Manager
 	cfg     Config
+	mu      sync.RWMutex
 	mux     *http.ServeMux
 }
 
@@ -75,6 +82,7 @@ func (s *Server) routes(staticFS fs.FS) {
 	s.mux.HandleFunc("/api/sessions", s.handleSessions)
 	s.mux.HandleFunc("/api/sessions/", s.handleSession)
 	s.mux.HandleFunc("/api/bundles", s.handleBundles)
+	s.mux.HandleFunc("/api/config", s.handleConfig)
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request, staticFS fs.FS) {
@@ -101,8 +109,23 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request, staticFS fs
 	html = strings.Replace(html, "tui-streamer\n  </div>", title+"\n  </div>", 1)
 
 	// Inject STARTUP_BUNDLE so the frontend knows whether to show the Import button.
-	startupBundleScript := fmt.Sprintf("<script>window.STARTUP_BUNDLE = %v;</script>", s.cfg.HasStartupBundle)
+	s.mu.RLock()
+	hasStartup := s.cfg.HasStartupBundle
+	s.mu.RUnlock()
+	startupBundleScript := fmt.Sprintf("<script>window.STARTUP_BUNDLE = %v;</script>", hasStartup)
 	html = strings.Replace(html, "</head>", "  "+startupBundleScript+"\n</head>", 1)
+
+	// Inject THEME_CONFIG so the first paint honors the bundle theme allowlist.
+	defaultTheme, themes := s.themeConfig()
+	themePayload, err := json.Marshal(map[string]any{
+		"default": defaultTheme,
+		"themes":  themes,
+	})
+	if err != nil {
+		themePayload = []byte(`{}`)
+	}
+	themeScript := fmt.Sprintf("<script>window.THEME_CONFIG = %s;</script>", themePayload)
+	html = strings.Replace(html, "</head>", "  "+themeScript+"\n</head>", 1)
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write([]byte(html))
@@ -240,30 +263,18 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request, sess *sessio
 		return
 	}
 
-	// Whitelist check.
-	if len(s.cfg.AllowedCommands) > 0 {
-		allowed := false
-		for _, a := range s.cfg.AllowedCommands {
-			if a == command[0] {
-				allowed = true
-				break
-			}
-		}
-		if !allowed {
-			http.Error(w, `{"error":"command not allowed"}`, http.StatusForbidden)
-			return
-		}
+	opts := s.execOptions(command)
+	if req.Dir != "" {
+		opts.Dir = req.Dir
+	}
+	if len(req.Env) > 0 {
+		opts.Env = req.Env
 	}
 
-	opts := executor.Options{
-		Command: command,
-		Dir:     req.Dir,
-		Env:     req.Env,
-		Stdout:  s.cfg.Stdout,
-		Stderr:  s.cfg.Stderr,
-	}
-	if opts.Dir == "" {
-		opts.Dir = s.cfg.Dir
+	// Whitelist check (after TUI_PATH expansion so basename matching works).
+	if !bundle.CommandAllowed(s.allowed(), opts.Command) {
+		http.Error(w, `{"error":"command not allowed"}`, http.StatusForbidden)
+		return
 	}
 	// Per-request overrides for stdout/stderr capture.
 	if req.Stdout != nil {
@@ -300,7 +311,7 @@ func (s *Server) handleBundles(w http.ResponseWriter, r *http.Request) {
 
 	f, err := bundle.Parse(body)
 	if err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -309,32 +320,40 @@ func (s *Server) handleBundles(w http.ResponseWriter, r *http.Request) {
 	for _, b := range f.Bundles {
 		for _, sess := range existing {
 			if sess.BundleName == b.Name {
-				http.Error(w, `{"error":"bundle "`+b.Name+`" already imported"}`, http.StatusConflict)
+				writeJSONError(w, http.StatusConflict, `bundle "`+b.Name+`" already imported`)
 				return
 			}
 		}
 	}
 
-	// Create sessions for every bundle in the file.
-	for _, b := range f.Bundles {
-		for _, entry := range b.Sessions {
-			sess := s.manager.Create(entry.Name, b.Name)
-			sess.PendingCommand = entry.Command
-			sess.Description = entry.Description
-			if entry.Autorun && entry.Command != "" {
-				opts := executor.Options{
-					Command: strings.Fields(entry.Command),
-					Dir:     s.cfg.Dir,
-					Stdout:  s.cfg.Stdout,
-					Stderr:  s.cfg.Stderr,
-				}
-				if err := sess.Exec(opts); err != nil {
-					log.Printf("bundle api: auto-exec %q: %v", entry.Name, err)
-				}
-			}
-		}
-	}
+	s.ImportFile(f)
 
 	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte(`{"status":"imported"}`))
+}
+
+// ── REST: /api/config ──────────────────────────────────────────────────────
+
+func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodGet {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+	defaultTheme, themes := s.themeConfig()
+	s.mu.RLock()
+	title := s.cfg.Title
+	hasStartup := s.cfg.HasStartupBundle
+	s.mu.RUnlock()
+	json.NewEncoder(w).Encode(map[string]any{
+		"title":          title,
+		"theme":          defaultTheme,
+		"themes":         themes,
+		"startup_bundle": hasStartup,
+	})
+}
+
+func writeJSONError(w http.ResponseWriter, status int, msg string) {
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }

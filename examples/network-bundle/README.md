@@ -18,6 +18,11 @@ named **Network Troubleshooting** from the BundleSet metadata):
 make app BUNDLE=./examples/network-bundle/bundle.yaml
 ```
 
+The BundleSet also sets a default theme (`catppuccin-macchiato`), limits the
+theme picker to three themes, and allowlists `ping`, `traceroute`, `dig`, and
+`nslookup`. CLI `-allow` flags are unioned with this list. See
+[TUI Path Demo](../tui-path/) for `appIcon`, a single-theme UI, and `TUI_PATH`.
+
 ## Bundle Structure
 
 The file uses a `BundleSet` to group two `Bundle` documents in a single YAML

@@ -13,8 +13,16 @@ ifneq ($(BUNDLE),)
     $(warning could not read metadata.name from $(BUNDLE); using $(APP_NAME))
   endif
   BUNDLE_FLAG := --bundle "$(BUNDLE)"
+  BUNDLE_ICON := $(shell go run ./cmd/bundlemeta -icon "$(BUNDLE)" 2>/dev/null)
+  ifneq ($(BUNDLE_ICON),)
+    ICON_SVG_FLAG := --icon-svg "$(BUNDLE_ICON)"
+  else
+    ICON_SVG_FLAG :=
+  endif
 else
   BUNDLE_FLAG :=
+  BUNDLE_ICON :=
+  ICON_SVG_FLAG :=
 endif
 
 BUILD_DIR   := dist
@@ -58,8 +66,9 @@ build-darwin-webview:
 		-o $(BUILD_DIR)/$(BINARY_NAME)-darwin-webview ./cmd/app
 
 ## icon: generate AppIcon.icns from the SVG source (macOS only, requires: brew install librsvg)
+##       Pass BUNDLE=... to use that file's metadata.appIcon instead of the stock SVG.
 icon:
-	@bash scripts/make-icon.sh
+	@bash scripts/make-icon.sh $(if $(BUNDLE_ICON),"$(BUNDLE_ICON)")
 
 ## app: build the primary macOS .app bundle with a native WKWebView window.
 ##      Requires macOS + Xcode command-line tools (CGO_ENABLED=1).
@@ -72,7 +81,8 @@ app: build-darwin-webview
 		--version  "$(VERSION)" \
 		--out-dir  "$(BUILD_DIR)" \
 		--webview \
-		$(BUNDLE_FLAG)
+		$(BUNDLE_FLAG) \
+		$(ICON_SVG_FLAG)
 
 ## app-server: build a headless server .app bundle that opens the UI in the
 ##             default browser (cross-compilable, no CGO required).
@@ -84,7 +94,8 @@ app-server: _require-darwin-binary
 		--name     "$(APP_NAME)" \
 		--version  "$(VERSION)" \
 		--out-dir  "$(BUILD_DIR)" \
-		$(BUNDLE_FLAG)
+		$(BUNDLE_FLAG) \
+		$(ICON_SVG_FLAG)
 
 ## dmg: create a distributable .dmg (requires 'make app' first, macOS only)
 dmg: _require-app-bundle
@@ -96,7 +107,8 @@ dmg: _require-app-bundle
 		--out-dir  "$(BUILD_DIR)" \
 		--webview \
 		--dmg \
-		$(BUNDLE_FLAG)
+		$(BUNDLE_FLAG) \
+		$(ICON_SVG_FLAG)
 
 ## clean: remove build artifacts
 clean:

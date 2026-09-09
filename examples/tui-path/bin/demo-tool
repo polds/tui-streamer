@@ -1,0 +1,7 @@
+#!/bin/sh
+# Sample helper bundled via spec.files and invoked as $(TUI_PATH)/demo-tool.
+echo "demo-tool: TUI_PATH=${TUI_PATH:-unset}"
+echo "demo-tool: running from $(cd "$(dirname "$0")" && pwd)"
+if [ "$#" -gt 0 ]; then
+  echo "demo-tool: args: $*"
+fi

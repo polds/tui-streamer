@@ -32,7 +32,6 @@ import (
 	webview "github.com/webview/webview_go"
 
 	"github.com/polds/tui-streamer/internal/bundle"
-	"github.com/polds/tui-streamer/internal/executor"
 	"github.com/polds/tui-streamer/internal/server"
 	"github.com/polds/tui-streamer/internal/session"
 	"github.com/polds/tui-streamer/web"
@@ -47,11 +46,18 @@ func (f *multiFlag) Set(v string) error { *f = append(*f, v); return nil }
 func main() {
 	defaultTitle := "TUI Streamer"
 	var b *bundle.File
+	tuiPath := bundle.PackagedTUIPath()
 	if path := bundle.PackagedPath(); path != "" {
 		if loaded, err := bundle.Load(path); err == nil {
 			b = loaded
 			if b.Name != "" {
 				defaultTitle = b.Name
+			}
+			resolved, err := bundle.ResolveTUIPath(path, b.Files)
+			if err != nil {
+				log.Printf("bundle files: %v", err)
+			} else if resolved != "" {
+				tuiPath = resolved
 			}
 		}
 	}
@@ -87,42 +93,30 @@ func main() {
 
 	manager := session.NewManager()
 
+	bundleAllow := []string(nil)
 	if b != nil {
-		for _, bun := range b.Bundles {
-			log.Printf("bundle %q: loading %d session(s)", bun.Name, len(bun.Sessions))
-			for _, entry := range bun.Sessions {
-				sess := manager.Create(entry.Name, bun.Name)
-				sess.PendingCommand = entry.Command
-				sess.Description = entry.Description
-				if entry.Autorun && entry.Command != "" {
-					opts := executor.Options{
-						Command: strings.Fields(entry.Command),
-						Dir:     *dir,
-						Stdout:  true,
-						Stderr:  true,
-					}
-					if err := sess.Exec(opts); err != nil {
-						log.Printf("bundle: auto-exec %q: %v", entry.Name, err)
-					} else {
-						log.Printf("bundle: auto-exec %q: started", entry.Name)
-					}
-				} else {
-					log.Printf("bundle: created %q (manual execution)", entry.Name)
-				}
-			}
-		}
+		bundleAllow = b.Allow
 	}
+	effectiveAllow := bundle.MergeAllowlists([]string(allowed), bundleAllow)
 
 	cfg := server.Config{
-		Title:           *title,
-		Stdout:          true,
-		Stderr:          true,
-		Dir:             *dir,
-		AllowedCommands: []string(allowed),
+		Title:            *title,
+		Stdout:           true,
+		Stderr:           true,
+		Dir:              *dir,
+		AllowedCommands:  effectiveAllow,
 		HasStartupBundle: b != nil,
+		TUIPath:          tuiPath,
+	}
+	if b != nil {
+		cfg.Theme = b.Theme
+		cfg.Themes = bundle.FilterThemes(b.Themes)
 	}
 
 	srv := server.New(manager, cfg, staticFS)
+	if b != nil {
+		srv.ImportFile(b)
+	}
 	addr := ":" + *port
 	url  := "http://localhost" + addr
 

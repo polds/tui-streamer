@@ -1,24 +1,28 @@
 #!/usr/bin/env bash
-# make-icon.sh – convert build/darwin/AppIcon.svg into an AppIcon.icns file.
+# make-icon.sh – convert an SVG into an AppIcon.icns file.
 #
 # Requirements (macOS only):
 #   - rsvg-convert   (brew install librsvg)
 #   - iconutil       (ships with Xcode command-line tools)
 #
 # Usage:
-#   bash scripts/make-icon.sh
+#   bash scripts/make-icon.sh [SVG] [ICNS]
 #
-# Output:
-#   build/darwin/AppIcon.icns   (ready to be bundled by package-macos.sh)
+# Defaults:
+#   SVG   build/darwin/AppIcon.svg
+#   ICNS  build/darwin/AppIcon.icns
+#
+# A bundle may set metadata.appIcon to a custom SVG; pass that path as SVG
+# (and optionally a distinct ICNS output so the stock icon is not overwritten).
 #
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-SVG="${REPO_ROOT}/build/darwin/AppIcon.svg"
-ICONSET="${REPO_ROOT}/build/darwin/AppIcon.iconset"
-ICNS="${REPO_ROOT}/build/darwin/AppIcon.icns"
+SVG="${1:-${REPO_ROOT}/build/darwin/AppIcon.svg}"
+ICNS="${2:-${REPO_ROOT}/build/darwin/AppIcon.icns}"
+ICONSET="${ICNS%.icns}.iconset"
 
 # ── sanity checks ─────────────────────────────────────────────────────────────
 if [[ "$(uname -s)" != "Darwin" ]]; then
@@ -58,7 +62,8 @@ for SIZE in 16 32 128 256 512; do
 done
 
 # ── build the .icns ───────────────────────────────────────────────────────────
-echo "→ Building AppIcon.icns"
+echo "→ Building $(basename "${ICNS}")"
+mkdir -p "$(dirname "${ICNS}")"
 iconutil -c icns "${ICONSET}" -o "${ICNS}"
 
 # Clean up intermediate iconset directory

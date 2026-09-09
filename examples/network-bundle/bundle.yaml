@@ -4,6 +4,16 @@ kind: BundleSet
 metadata:
   name: Network Troubleshooting
 spec:
+  theme: catppuccin-macchiato
+  themes:
+    - catppuccin-macchiato
+    - nord
+    - dracula
+  allow:
+    - ping
+    - traceroute
+    - dig
+    - nslookup
   bundles:
     - name: Connectivity
     - name: DNS
