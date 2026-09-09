@@ -58,8 +58,17 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
+      # Go 1.22's internal linker omits LC_UUID unless -B gobuildid is set.
+      # macos-latest (macOS 15+) dyld then aborts the test binary:
+      #   missing LC_UUID load command → signal: abort trap
+      # https://github.com/golang/go/issues/68678
       - name: Run tests
+        if: ${{ !(matrix.os == 'macos-latest' && matrix.go-version == '1.22') }}
         run: go test -v -race -count=1 -timeout=120s ./...
+
+      - name: Run tests
+        if: ${{ matrix.os == 'macos-latest' && matrix.go-version == '1.22' }}
+        run: go test -v -race -count=1 -timeout=120s -ldflags=-B gobuildid ./...
 
       - name: Upload coverage
         if: matrix.os == 'ubuntu-latest' && matrix.go-version == '1.22'
