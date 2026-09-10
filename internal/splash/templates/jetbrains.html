@@ -1,6 +1,7 @@
-<style>
+<style data-splash>
 #splash[data-style="jetbrains"] { display: grid; grid-template-columns: 42% 1fr; grid-template-rows: 1fr auto; }
 #splash[data-style="jetbrains"] .art { grid-row: 1 / span 2; position: relative; overflow: hidden;
+  background: var(--splash-accent);
   background: linear-gradient(135deg, var(--splash-accent), color-mix(in srgb, var(--splash-accent) 40%, #000) 70%, #000); display: grid; place-items: center; }
 #splash[data-style="jetbrains"] .art::before { content: ""; position: absolute; inset: -40%;
   background: conic-gradient(from 0deg, transparent, rgba(255, 255, 255, 0.18), transparent 30%);

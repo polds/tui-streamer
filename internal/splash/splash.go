@@ -55,6 +55,20 @@ func Render(cfg bundle.SplashConfig, in Inputs) (*Document, error) {
 		in.RemainingMS = 0
 	}
 
+	// Defence in depth: bundle.Parse already rejects an accent/background
+	// that could break out of CSS, but a caller that builds a SplashConfig
+	// by hand (e.g. server.Config assembled directly, not via a bundle
+	// file) bypasses that check. Fall back to the default colours rather
+	// than passing an unvalidated string into a <style> block or a style=""
+	// attribute.
+	defaults := bundle.DefaultSplash()
+	if !bundle.ValidCSSColor(cfg.Accent) {
+		cfg.Accent = defaults.Accent
+	}
+	if !bundle.ValidCSSColor(cfg.Background) {
+		cfg.Background = defaults.Background
+	}
+
 	head, body, err := renderContent(cfg, in)
 	if err != nil {
 		return nil, err
@@ -76,13 +90,13 @@ func Render(cfg bundle.SplashConfig, in Inputs) (*Document, error) {
 	configJS := strings.ReplaceAll(string(config), "</", "<\\/")
 
 	var h strings.Builder
-	h.WriteString("<style>")
+	h.WriteString("<style data-splash>")
 	h.WriteString(baseCSS)
 	h.WriteString("</style>\n")
 	h.WriteString(head)
-	h.WriteString("\n<script>window.SPLASH = ")
+	h.WriteString("\n<script data-splash>window.SPLASH = ")
 	h.WriteString(configJS)
-	h.WriteString(";</script>\n<script>")
+	h.WriteString(";</script>\n<script data-splash>")
 	h.WriteString(shimJS)
 	h.WriteString("</script>")
 

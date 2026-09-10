@@ -1301,6 +1301,11 @@ class Splash {
     // (e.g. phase === 'final' dispatches on the next tick after DOMContentLoaded).
     if (window.splash && window.splash.sent && window.splash.sent.animated) { this.animated = true; }
     document.addEventListener('splash:dismissed', () => {
+      // Remove every <style>/<script> Render placed in <head> (base CSS,
+      // template CSS, custom-page blocks, inlined stylesheets, the
+      // window.SPLASH/shim scripts) alongside #splash itself, so a custom
+      // page's CSS/JS cannot keep affecting the live UI after dismissal.
+      document.querySelectorAll('[data-splash]').forEach(n => n.remove());
       this.$el?.remove();
       this.$el = null;
     });

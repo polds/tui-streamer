@@ -25,7 +25,19 @@ var (
 	// Attribute and CSS references that may point at a relative file.
 	reAttrRef = regexp.MustCompile(`(?i)\b(src|href)=["']([^"']+)["']`)
 	reCSSURL  = regexp.MustCompile(`(?i)url\(\s*["']?([^"')]+)["']?\s*\)`)
+	// reOpenTag matches the opening of a <style> or <script> tag so a
+	// data-splash marker attribute can be inserted right after the tag name,
+	// leaving any existing attributes untouched.
+	reOpenTag = regexp.MustCompile(`(?is)^<(style|script)([\s>])`)
 )
+
+// markDataSplash inserts a data-splash attribute into the opening <style> or
+// <script> tag of a head block copied from a custom page, so app.js's
+// splash:dismissed handler (web/static/app.js) can find and remove every
+// element Render placed in Head, not just #splash itself.
+func markDataSplash(tag string) string {
+	return reOpenTag.ReplaceAllString(tag, "<$1 data-splash$2")
+}
 
 // isRelativeRef reports whether ref is a bundle-relative file reference (as
 // opposed to a URL, data URI, fragment or absolute path).
@@ -142,6 +154,18 @@ func (in *inliner) inlineRefs(s string) (string, error) {
 // renderCustom loads cfg.HTML and produces head/body fragments compatible
 // with the built-in styles: styles and scripts from <head> (linked
 // stylesheets inlined as <style>), body content wrapped in #splash.
+//
+// Known limitations, none of which are validated at bundle-load time:
+//   - srcset attributes are not processed (only src/href and CSS url()).
+//   - @import rules without a url(...) wrapper (bare @import "x.css";) are
+//     not followed or inlined.
+//   - <link rel="preload stylesheet"> (a space-separated rel list) is not
+//     recognised as a stylesheet link; only an exact rel="stylesheet" is.
+//   - head <style> blocks are always re-emitted before head <script> blocks,
+//     regardless of their original order in the source document.
+//   - <a href="x.html"> relative links are treated the same as any other
+//     relative reference and get their target inlined as a data URI, even
+//     though the file is HTML, not an asset.
 func renderCustom(cfg bundle.SplashConfig, in Inputs) (string, string, error) {
 	raw, err := os.ReadFile(cfg.HTML)
 	if err != nil {
@@ -151,12 +175,18 @@ func renderCustom(cfg bundle.SplashConfig, in Inputs) (string, string, error) {
 	il := newInliner(cfg.HTML)
 
 	headSrc := ""
-	if m := reHead.FindStringSubmatch(src); m != nil {
-		headSrc = m[1]
+	headIdx := reHead.FindStringSubmatchIndex(src)
+	if headIdx != nil {
+		headSrc = src[headIdx[2]:headIdx[3]]
 	}
 	bodySrc := src
 	if m := reBody.FindStringSubmatch(src); m != nil {
 		bodySrc = m[1]
+	} else if headIdx != nil {
+		// No <body> tag: the whole document is treated as the body, but the
+		// matched <head>…</head> region must be cut out first or its style/
+		// script blocks would be emitted twice (once in head, once in body).
+		bodySrc = src[:headIdx[0]] + src[headIdx[1]:]
 	}
 
 	var head strings.Builder
@@ -186,7 +216,7 @@ func renderCustom(cfg bundle.SplashConfig, in Inputs) (string, string, error) {
 		if err != nil {
 			return "", "", err
 		}
-		head.WriteString("<style>")
+		head.WriteString("<style data-splash>")
 		head.WriteString(inlined)
 		head.WriteString("</style>\n")
 	}
@@ -195,7 +225,7 @@ func renderCustom(cfg bundle.SplashConfig, in Inputs) (string, string, error) {
 		if err != nil {
 			return "", "", err
 		}
-		head.WriteString(inlined)
+		head.WriteString(markDataSplash(inlined))
 		head.WriteString("\n")
 	}
 
@@ -214,6 +244,9 @@ func renderCustom(cfg bundle.SplashConfig, in Inputs) (string, string, error) {
 
 // Assets returns the absolute paths of every relative file a custom splash
 // page references (stylesheets, images, fonts). Empty for built-in styles.
+// It walks the same references renderCustom inlines, so it shares that
+// function's limitations (see its doc comment): srcset, bare @import,
+// multi-token rel lists, and relative <a href> targets are not discovered.
 func Assets(cfg bundle.SplashConfig) ([]string, error) {
 	if cfg.HTML == "" {
 		return nil, nil

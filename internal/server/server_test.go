@@ -11,6 +11,7 @@ import (
 
 	"github.com/polds/tui-streamer/internal/bundle"
 	"github.com/polds/tui-streamer/internal/session"
+	"github.com/polds/tui-streamer/web"
 )
 
 func testStaticFS() fstest.MapFS {
@@ -92,6 +93,8 @@ func TestIndexInjectsSplashOverlay(t *testing.T) {
 		`"phase":"intro"`,
 		`window.splash =`,
 		`data:image/svg+xml;base64,`,
+		`<style data-splash`,
+		`<script data-splash`,
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("index missing %q", want)
@@ -133,5 +136,40 @@ func TestConfigExposesSplash(t *testing.T) {
 	}
 	if _, has := sp["html"]; has {
 		t.Errorf("html path must not be exposed")
+	}
+}
+
+func TestIndexSplashRemainingIsClamped(t *testing.T) {
+	mgr := session.NewManager()
+	s := New(mgr, Config{Title: "T"}, testStaticFS()) // default splash: minDuration 1200ms
+	cases := map[string]struct {
+		remaining string
+		wantMs    string
+	}{
+		"garbage":       {"not-a-number", `"remainingMs":0`},
+		"overflow":      {"99999999999999999999", `"remainingMs":1200`},
+		"negative":      {"-5", `"remainingMs":0`},
+		"within-bounds": {"300", `"remainingMs":300`},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/?splash=final&remaining="+tc.remaining, nil)
+			rec := httptest.NewRecorder()
+			s.Handler().ServeHTTP(rec, req)
+			html := rec.Body.String()
+			if !strings.Contains(html, tc.wantMs) {
+				t.Errorf("remaining=%q: want %s in body, got: %s", tc.remaining, tc.wantMs, html)
+			}
+		})
+	}
+}
+
+func TestIndexEmbeddedHTMLHasSplashPlaceholder(t *testing.T) {
+	b, err := web.Static.ReadFile("static/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `<div id="splash" hidden></div>`) {
+		t.Errorf("embedded static/index.html is missing the #splash placeholder")
 	}
 }

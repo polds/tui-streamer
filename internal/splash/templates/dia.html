@@ -1,7 +1,9 @@
-<style>
+<style data-splash>
 #splash[data-style="dia"] { --splash-fg: #1c1c1e; --splash-muted: rgba(0, 0, 0, 0.5); display: grid; place-items: center;
+  background: var(--splash-bg);
   background: linear-gradient(160deg, var(--splash-bg), color-mix(in srgb, var(--splash-bg) 85%, var(--splash-accent))); }
 #splash[data-style="dia"] .orb { position: absolute; width: 420px; height: 420px; border-radius: 50%; z-index: 0;
+  background: var(--splash-accent);
   background: radial-gradient(circle at 40% 40%, color-mix(in srgb, var(--splash-accent) 45%, white), transparent 65%);
   filter: blur(30px); animation: splash-dia-breathe 3.2s ease-in-out infinite; }
 #splash[data-style="dia"] .stack { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 16px; text-align: center; }

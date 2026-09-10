@@ -14,7 +14,10 @@ func writeCustom(t *testing.T, html string) bundle.SplashConfig {
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, "img"), 0o755)
 	os.WriteFile(filepath.Join(dir, "img", "logo.svg"), []byte("<svg/>"), 0o644)
-	os.WriteFile(filepath.Join(dir, "font.css"), []byte("#splash h1 { color: red; }"), 0o644)
+	// Deliberately unscoped: this fixture proves Render/app.js's data-splash
+	// removal is what keeps custom-page CSS from leaking into the live UI on
+	// dismiss, not authors having to scope every rule under #splash.
+	os.WriteFile(filepath.Join(dir, "font.css"), []byte("h1 { color: red; }"), 0o644)
 	p := filepath.Join(dir, "splash.html")
 	os.WriteFile(p, []byte(html), 0o644)
 	c := bundle.DefaultSplash()
@@ -45,7 +48,7 @@ func TestCustomPageIsWrappedAndInlined(t *testing.T) {
 	if strings.Count(doc.HTML, "data:image/svg+xml;base64,") != 2 {
 		t.Errorf("expected img src and css url() inlined, got %d", strings.Count(doc.HTML, "data:image/svg+xml;base64,"))
 	}
-	if !strings.Contains(doc.Head, "#splash h1 { color: red; }") {
+	if !strings.Contains(doc.Head, "h1 { color: red; }") {
 		t.Errorf("linked stylesheet should be inlined into Head")
 	}
 	if !strings.Contains(doc.Head, "window.__custom = 1;") || !strings.Contains(doc.Body, "splash.animated()") {
@@ -53,6 +56,33 @@ func TestCustomPageIsWrappedAndInlined(t *testing.T) {
 	}
 	if !strings.Contains(doc.Head, "window.splash =") {
 		t.Errorf("shim missing")
+	}
+	// Every <style>/<script> Render places in Head — the inlined stylesheet,
+	// the page's own head <style>, and the page's own head <script> — must
+	// carry data-splash so app.js's splash:dismissed handler can remove them
+	// all, not just #splash, once the overlay is torn down.
+	for _, want := range []string{
+		`<style data-splash>h1 { color: red; }`,
+		`<style data-splash>#splash .hero`,
+		`<script data-splash>window.__custom = 1;`,
+	} {
+		if !strings.Contains(doc.Head, want) {
+			t.Errorf("head missing %q in: %s", want, doc.Head)
+		}
+	}
+}
+
+func TestCustomPageHeadWithoutBodyNotDuplicated(t *testing.T) {
+	c := writeCustom(t, `<html><head><style>#splash h1 { color: blue; }</style></head>Just text, no body tag.</html>`)
+	doc, err := Render(c, Inputs{Title: "T"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(doc.HTML, "color: blue"); n != 1 {
+		t.Errorf("head style block duplicated into body: appears %d times in %s", n, doc.HTML)
+	}
+	if !strings.Contains(doc.Body, "Just text, no body tag.") {
+		t.Errorf("remaining page text should still appear in body: %s", doc.Body)
 	}
 }
 

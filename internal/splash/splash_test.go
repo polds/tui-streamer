@@ -39,8 +39,8 @@ func TestRenderMinimalStandalone(t *testing.T) {
 	if !strings.HasPrefix(strings.TrimSpace(doc.Body), `<div id="splash"`) {
 		t.Errorf("Body should start with the #splash div, got %.60q", doc.Body)
 	}
-	if !strings.Contains(doc.Head, "<style>") || !strings.Contains(doc.Head, "<script>") {
-		t.Errorf("Head should contain style and script blocks")
+	if !strings.Contains(doc.Head, "<style data-splash>") || !strings.Contains(doc.Head, "<script data-splash>") {
+		t.Errorf("Head should contain style and script blocks marked data-splash, got: %s", doc.Head)
 	}
 	if strings.Contains(doc.HTML, "<b>line</b>") {
 		t.Errorf("tagline was not escaped")
@@ -80,6 +80,21 @@ func TestRenderZeroConfigUsesDefaults(t *testing.T) {
 	}
 }
 
+func TestRenderRejectsUnvalidatedColour(t *testing.T) {
+	c := cfg("minimal")
+	c.Accent = "red; } </style><script>alert(1)</script>"
+	doc, err := Render(c, Inputs{Title: "T", Phase: PhaseIntro})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(doc.HTML, "</style><script>alert(1)</script>") {
+		t.Errorf("unvalidated accent broke out of CSS: %s", doc.HTML)
+	}
+	if !strings.Contains(doc.HTML, "--splash-accent: "+bundle.DefaultSplash().Accent) {
+		t.Errorf("expected fallback to the default accent, got: %s", doc.HTML)
+	}
+}
+
 func TestRenderUnknownStyle(t *testing.T) {
 	c := cfg("nope")
 	if _, err := Render(c, Inputs{Title: "T"}); err == nil {
@@ -99,6 +114,14 @@ func TestRenderAllBuiltinStyles(t *testing.T) {
 			}
 			if !strings.Contains(intro.Body, "data-splash-intro") {
 				t.Errorf("intro phase must mark animated elements with data-splash-intro")
+			}
+			// Exactly one template <style> block plus the base CSS wrapper
+			// land in Head; none should end up duplicated into Body.
+			if n := strings.Count(intro.Head, "<style"); n != 2 {
+				t.Errorf("Head should contain exactly 2 <style tags (base CSS + template), got %d", n)
+			}
+			if strings.Contains(intro.Body, "<style") {
+				t.Errorf("Body should not contain a <style block: %.120q", intro.Body)
 			}
 			if !strings.Contains(intro.Body, "App") || !strings.Contains(intro.Body, "Tag &lt;b&gt;line&lt;/b&gt;") {
 				t.Errorf("title/tagline missing or unescaped")

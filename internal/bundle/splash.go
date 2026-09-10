@@ -60,6 +60,16 @@ type splashYAML struct {
 
 var colorPattern = regexp.MustCompile(`^[#a-zA-Z0-9(),.% -]+$`)
 
+// ValidCSSColor reports whether s is safe to substitute verbatim into a CSS
+// declaration or a style="" attribute — i.e. it cannot close a <style> tag,
+// a style attribute, or start a new declaration. Bundle parsing (Parse)
+// already rejects an invalid accent/background at load time; this is
+// exported so other callers that build a SplashConfig by hand (rather than
+// through Parse), such as internal/splash.Render, can re-check it in depth.
+func ValidCSSColor(s string) bool {
+	return s != "" && colorPattern.MatchString(s)
+}
+
 // DefaultSplash is the configuration used when a bundle has no splash block.
 func DefaultSplash() SplashConfig {
 	return SplashConfig{

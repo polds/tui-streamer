@@ -141,7 +141,10 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request, staticFS fs
 	remaining := 0
 	if r.URL.Query().Get("splash") == "final" {
 		phase = splash.PhaseFinal
-		remaining, _ = strconv.Atoi(r.URL.Query().Get("remaining"))
+		s.mu.RLock()
+		minDurationMs := s.cfg.Splash.WithDefaults().MinDuration.Milliseconds()
+		s.mu.RUnlock()
+		remaining = parseRemainingMs(r.URL.Query().Get("remaining"), minDurationMs)
 	}
 	s.mu.RLock()
 	splashCfg, icon, version := s.cfg.Splash, s.cfg.SplashIcon, s.cfg.Version
@@ -155,6 +158,31 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request, staticFS fs
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write([]byte(html))
+}
+
+// parseRemainingMs parses the ?remaining= query value used by a native
+// handoff, clamping the result to [0, maxMs]. A value that fails to parse
+// (garbage, empty) yields 0. A value that overflows int64 is treated as "at
+// least maxMs" and clamped down to it, rather than discarded to 0, since an
+// overflowing remaining time is closer to "wait the full minDuration" than
+// to "don't wait at all".
+func parseRemainingMs(raw string, maxMs int64) int {
+	v, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		numErr, ok := err.(*strconv.NumError)
+		if !ok || numErr.Err != strconv.ErrRange {
+			return 0
+		}
+		// Out of range: ParseInt already saturated v to the maximum
+		// magnitude int64 value (or its negation); fall through to clamp.
+	}
+	if v < 0 {
+		v = 0
+	}
+	if v > maxMs {
+		v = maxMs
+	}
+	return int(v)
 }
 
 // ── WebSocket ──────────────────────────────────────────────────────────────
