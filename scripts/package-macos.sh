@@ -133,11 +133,20 @@ if [[ -n "${BUNDLE_FILE}" ]]; then
 
     # Custom splash page + assets, keeping paths relative to the bundle so the
     # packaged bundle.yaml's `html:` still resolves under Resources/.
-    bundle_dir="$(dirname "${BUNDLE_FILE}")"
+    bundle_dir="$(cd "$(dirname "${BUNDLE_FILE}")" && pwd -P)"
     splash_html="$(cd "${REPO_ROOT}" && go run ./cmd/bundlemeta -splash "${BUNDLE_FILE}" 2>/dev/null || true)"
     if [[ -n "${splash_html}" ]]; then
       { echo "${splash_html}"; cd "${REPO_ROOT}" && go run ./cmd/bundlemeta -splash-assets "${BUNDLE_FILE}"; } | while IFS= read -r src; do
         [[ -z "${src}" ]] && continue
+        # bundlemeta -splash-assets prints symlink-resolved (physical) paths
+        # while ${bundle_dir} above is likewise physical (pwd -P); resolve
+        # src's directory the same way so the prefix strip below compares
+        # like with like (e.g. a bundle under /tmp -> /private/tmp on macOS).
+        if ! src_dir="$(cd "$(dirname "${src}")" 2>/dev/null && pwd -P)"; then
+          echo "Error: splash asset source not found: ${src}" >&2
+          exit 1
+        fi
+        src="${src_dir}/$(basename "${src}")"
         rel="${src#"${bundle_dir}"/}"
         if [[ "${rel}" == "${src}" ]]; then
           echo "Error: splash asset ${src} is outside the bundle directory" >&2
