@@ -16,12 +16,15 @@ import (
 const maxInlineBytes = 10 << 20
 
 var (
-	reHead   = regexp.MustCompile(`(?is)<head[^>]*>(.*?)</head>`)
-	reBody   = regexp.MustCompile(`(?is)<body[^>]*>(.*?)</body>`)
-	reStyle  = regexp.MustCompile(`(?is)<style[^>]*>.*?</style>`)
-	reScript = regexp.MustCompile(`(?is)<script[^>]*>.*?</script>`)
-	reLink   = regexp.MustCompile(`(?is)<link[^>]+rel=["']?stylesheet["']?[^>]*>`)
-	reHref   = regexp.MustCompile(`(?i)href=["']([^"']+)["']`)
+	// HTML comments are dropped before any extraction so a comment that mentions
+	// <body> or <style> cannot become a false match.
+	reComment = regexp.MustCompile(`(?s)<!--.*?-->`)
+	reHead    = regexp.MustCompile(`(?is)<head[^>]*>(.*?)</head>`)
+	reBody    = regexp.MustCompile(`(?is)<body[^>]*>(.*?)</body>`)
+	reStyle   = regexp.MustCompile(`(?is)<style[^>]*>.*?</style>`)
+	reScript  = regexp.MustCompile(`(?is)<script[^>]*>.*?</script>`)
+	reLink    = regexp.MustCompile(`(?is)<link[^>]+rel=["']?stylesheet["']?[^>]*>`)
+	reHref    = regexp.MustCompile(`(?i)href=["']([^"']+)["']`)
 	// Attribute and CSS references that may point at a relative file.
 	reAttrRef = regexp.MustCompile(`(?i)\b(src|href)=["']([^"']+)["']`)
 	reCSSURL  = regexp.MustCompile(`(?i)url\(\s*["']?([^"')]+)["']?\s*\)`)
@@ -176,7 +179,7 @@ func renderCustom(cfg bundle.SplashConfig, in Inputs) (string, string, error) {
 	if err != nil {
 		return "", "", fmt.Errorf("splash html: %w", err)
 	}
-	src := string(raw)
+	src := reComment.ReplaceAllString(string(raw), "")
 	il := newInliner(cfg.HTML)
 
 	headSrc := ""
@@ -260,12 +263,13 @@ func Assets(cfg bundle.SplashConfig) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("splash html: %w", err)
 	}
+	src := reComment.ReplaceAllString(string(raw), "")
 	il := newInliner(cfg.HTML)
-	if _, err := il.inlineRefs(string(raw)); err != nil {
+	if _, err := il.inlineRefs(src); err != nil {
 		return nil, err
 	}
 	// Stylesheets can reference further assets; walk them too.
-	for _, link := range reLink.FindAllString(string(raw), -1) {
+	for _, link := range reLink.FindAllString(src, -1) {
 		if hm := reHref.FindStringSubmatch(link); hm != nil && isRelativeRef(hm[1]) {
 			abs, err := il.resolve(hm[1])
 			if err != nil {

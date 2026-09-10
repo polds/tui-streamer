@@ -153,6 +153,22 @@ func TestCustomPageIgnoresEncodedFragmentInsideDataURI(t *testing.T) {
 	}
 }
 
+func TestCustomPageIgnoresTagsInsideComments(t *testing.T) {
+	// A leading comment that mentions <body> must not become the body match.
+	const page = `<!-- wraps <body> in a div --><html><head><style>#splash p { color: blue; }</style></head><body><p>real body</p></body></html>`
+	c := writeCustom(t, page)
+	doc, err := Render(c, Inputs{Title: "T"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(doc.Body, "wraps") || strings.Contains(doc.Body, "<style") {
+		t.Errorf("comment text or head content leaked into body: %s", doc.Body)
+	}
+	if !strings.Contains(doc.Body, "<p>real body</p>") || !strings.Contains(doc.Head, "color: blue") {
+		t.Errorf("real body/head content missing: body=%s head=%s", doc.Body, doc.Head)
+	}
+}
+
 func TestCustomPageSizeCap(t *testing.T) {
 	c := writeCustom(t, `<html><body><img src="big.bin"></body></html>`)
 	big := make([]byte, 11<<20)
