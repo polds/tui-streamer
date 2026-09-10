@@ -130,6 +130,24 @@ if [[ -n "${BUNDLE_FILE}" ]]; then
       fi
       echo "  ✓ Bundled file: ${src} → Contents/Resources/tui/${dest_rel}"
     done <<< "${files_list}"
+
+    # Custom splash page + assets, keeping paths relative to the bundle so the
+    # packaged bundle.yaml's `html:` still resolves under Resources/.
+    bundle_dir="$(dirname "${BUNDLE_FILE}")"
+    splash_html="$(cd "${REPO_ROOT}" && go run ./cmd/bundlemeta -splash "${BUNDLE_FILE}" 2>/dev/null || true)"
+    if [[ -n "${splash_html}" ]]; then
+      { echo "${splash_html}"; cd "${REPO_ROOT}" && go run ./cmd/bundlemeta -splash-assets "${BUNDLE_FILE}"; } | while IFS= read -r src; do
+        [[ -z "${src}" ]] && continue
+        rel="${src#"${bundle_dir}"/}"
+        if [[ "${rel}" == "${src}" ]]; then
+          echo "Error: splash asset ${src} is outside the bundle directory" >&2
+          exit 1
+        fi
+        mkdir -p "${RESOURCES_DIR}/$(dirname "${rel}")"
+        cp "${src}" "${RESOURCES_DIR}/${rel}"
+        echo "  ✓ Bundled splash: ${rel} → Contents/Resources/${rel}"
+      done
+    fi
   fi
 fi
 

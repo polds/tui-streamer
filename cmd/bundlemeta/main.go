@@ -2,9 +2,11 @@
 //
 // Usage:
 //
-//	bundlemeta -name  <bundle.yaml>   # metadata.name (BundleSet or first Bundle)
-//	bundlemeta -icon  <bundle.yaml>   # resolved absolute appIcon path (or empty)
-//	bundlemeta -files <bundle.yaml>   # source<TAB>dest lines for spec.files
+//	bundlemeta -name          <bundle.yaml>   # metadata.name (BundleSet or first Bundle)
+//	bundlemeta -icon          <bundle.yaml>   # resolved absolute appIcon path (or empty)
+//	bundlemeta -files         <bundle.yaml>   # source<TAB>dest lines for spec.files
+//	bundlemeta -splash        <bundle.yaml>   # resolved absolute custom splash html path (or empty)
+//	bundlemeta -splash-assets <bundle.yaml>   # absolute asset paths referenced by the custom splash html
 package main
 
 import (
@@ -14,15 +16,18 @@ import (
 	"path/filepath"
 
 	"github.com/polds/tui-streamer/internal/bundle"
+	"github.com/polds/tui-streamer/internal/splash"
 )
 
 func main() {
 	name := flag.Bool("name", false, "print the bundle display name")
 	icon := flag.Bool("icon", false, "print the resolved appIcon path")
 	files := flag.Bool("files", false, "print source\\tdest lines for spec.files")
+	splashHTML := flag.Bool("splash", false, "print the resolved custom splash html path (or empty)")
+	splashAssets := flag.Bool("splash-assets", false, "print absolute paths of assets referenced by the custom splash html")
 	flag.Parse()
 	if flag.NArg() != 1 {
-		fmt.Fprintln(os.Stderr, "usage: bundlemeta [-name|-icon|-files] <bundle.yaml>")
+		fmt.Fprintln(os.Stderr, "usage: bundlemeta [-name|-icon|-files|-splash|-splash-assets] <bundle.yaml>")
 		os.Exit(2)
 	}
 
@@ -73,6 +78,17 @@ func main() {
 				os.Exit(1)
 			}
 			fmt.Printf("%s\t%s\n", resolved, dest)
+		}
+	case *splashHTML:
+		fmt.Print(f.Splash.HTML)
+	case *splashAssets:
+		assets, err := splash.Assets(f.Splash)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "bundlemeta: %v\n", err)
+			os.Exit(1)
+		}
+		for _, a := range assets {
+			fmt.Println(a)
 		}
 	default:
 		// Default to name so `bundlemeta file.yaml` matches bundle-name.py.
