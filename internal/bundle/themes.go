@@ -5,6 +5,7 @@ package bundle
 var BuiltInThemes = []string{
 	"catppuccin-macchiato",
 	"catppuccin-latte",
+	"catppuccin-latte-pink",
 	"catppuccin-frappe",
 	"catppuccin-mocha",
 	"dark",
