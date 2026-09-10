@@ -27,15 +27,16 @@ import (
 // rawDoc is a minimally-parsed YAML document used to identify the kind and
 // decode the spec field into the appropriate concrete type.
 type rawDoc struct {
-	APIVersion string   `yaml:"apiVersion"`
-	Kind       string   `yaml:"kind"`
-	Metadata   metadata `yaml:"metadata"`
+	APIVersion string    `yaml:"apiVersion"`
+	Kind       string    `yaml:"kind"`
+	Metadata   metadata  `yaml:"metadata"`
 	Spec       yaml.Node `yaml:"spec"`
 }
 
 type metadata struct {
-	Name    string `yaml:"name"`
-	AppIcon string `yaml:"appIcon"`
+	Name    string      `yaml:"name"`
+	AppIcon string      `yaml:"appIcon"`
+	Splash  *splashYAML `yaml:"splash"`
 }
 
 type bundleSpec struct {
@@ -136,6 +137,8 @@ type File struct {
 	Allow []string
 	// Files are extra files/directories staged into TUI_PATH.
 	Files []FileEntry
+	// Splash is the resolved metadata.splash block (defaults applied).
+	Splash SplashConfig
 }
 
 // ── Parsing ────────────────────────────────────────────────────────────────
@@ -150,6 +153,9 @@ func Load(path string) (*File, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse bundle %q: %w", path, err)
 	}
+	if err := f.Splash.resolveSplashHTML(filepath.Dir(path)); err != nil {
+		return nil, fmt.Errorf("bundle %q: %w", path, err)
+	}
 	return f, nil
 }
 
@@ -160,6 +166,7 @@ type parsedBundle struct {
 	themes  []string
 	allow   []string
 	files   []FileEntry
+	splash  *splashYAML
 }
 
 // Parse parses YAML bundle data. The data may contain multiple "---"-separated
@@ -194,6 +201,7 @@ func Parse(data []byte) (*File, error) {
 				themes:  spec.Themes,
 				allow:   spec.Allow,
 				files:   spec.Files,
+				splash:  d.Metadata.Splash,
 			}
 			if _, exists := bundlesByName[d.Metadata.Name]; !exists {
 				bundleOrder = append(bundleOrder, d.Metadata.Name)
@@ -221,6 +229,11 @@ func Parse(data []byte) (*File, error) {
 	if bundleSetDoc != nil {
 		file.Name = bundleSetDoc.Metadata.Name
 		file.AppIcon = bundleSetDoc.Metadata.AppIcon
+		sp, err := resolveSplash(bundleSetDoc.Metadata.Splash)
+		if err != nil {
+			return nil, fmt.Errorf("bundleset %q: %w", bundleSetDoc.Metadata.Name, err)
+		}
+		file.Splash = sp
 		var setSpec bundleSetSpec
 		if err := bundleSetDoc.Spec.Decode(&setSpec); err != nil {
 			return nil, fmt.Errorf("bundleset %q spec: %w", bundleSetDoc.Metadata.Name, err)
@@ -251,6 +264,11 @@ func Parse(data []byte) (*File, error) {
 				file.Themes = pb.themes
 				file.Allow = pb.allow
 				file.Files = pb.files
+				sp, err := resolveSplash(pb.splash)
+				if err != nil {
+					return nil, fmt.Errorf("bundle %q: %w", pb.bundle.Name, err)
+				}
+				file.Splash = sp
 			}
 		}
 	}
