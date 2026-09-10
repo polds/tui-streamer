@@ -209,6 +209,7 @@ func main() {
 	// as it fires 'animated', which can happen immediately on load, so the
 	// binding must already exist by the time SetHtml loads any content.
 	wv.Bind("__splashPost", func(name string) {
+		log.Printf("splash: page posted %q at +%s", name, time.Since(splashShown).Round(time.Millisecond))
 		switch name {
 		case "animated":
 			handoffMu.Lock()
