@@ -51,6 +51,8 @@ func renderBuiltin(style string, d templateData) (head, body string, err error) 
 	}
 	out := buf.String()
 	// Templates are written as <style>…</style> followed by the #splash div.
+	// Every template file must contain exactly one <style> block: this split
+	// point is found by the first (and expected only) "</style>" in the output.
 	i := strings.Index(out, "</style>")
 	if i < 0 {
 		return "", strings.TrimSpace(out), nil

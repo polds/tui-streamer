@@ -1,0 +1,29 @@
+<style>
+#splash[data-style="arc"] { display: grid; place-items: center; isolation: isolate; }
+#splash[data-style="arc"] .mesh { position: absolute; inset: -20%; z-index: -1; filter: blur(60px) saturate(1.3); opacity: 0.9;
+  background:
+    radial-gradient(40% 40% at 20% 30%, var(--splash-accent), transparent 70%),
+    radial-gradient(35% 35% at 80% 25%, color-mix(in srgb, var(--splash-accent) 60%, #ff6bcb), transparent 70%),
+    radial-gradient(45% 45% at 60% 80%, color-mix(in srgb, var(--splash-accent) 50%, #34d399), transparent 70%);
+  animation: splash-arc-drift 14s ease-in-out infinite alternate; }
+#splash[data-style="arc"] .stack { display: flex; flex-direction: column; align-items: center; gap: 18px; text-align: center; }
+#splash[data-style="arc"] .splash-icon, #splash[data-style="arc"] .splash-glyph { width: 128px; height: 128px; border-radius: 30px;
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.35); }
+#splash[data-style="arc"] .splash-title { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; }
+#splash[data-style="arc"] .splash-tagline { font-size: 16px; max-width: 42ch; }
+#splash[data-style="arc"] .splash-bar { width: 160px; margin-top: 10px; }
+#splash[data-style="arc"][data-phase="intro"] .rise { animation: splash-arc-rise 900ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+#splash[data-style="arc"][data-phase="intro"] .fade { animation: splash-arc-fade 700ms ease-out 500ms both; }
+@keyframes splash-arc-drift { from { transform: translate3d(-3%, -2%, 0) rotate(0deg); } to { transform: translate3d(3%, 4%, 0) rotate(8deg); } }
+@keyframes splash-arc-rise { from { opacity: 0; transform: translateY(40px) scale(0.92); } to { opacity: 1; transform: none; } }
+@keyframes splash-arc-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+</style>
+<div id="splash" data-style="arc" data-phase="{{.Phase}}" style="--splash-accent: {{.Accent}}; --splash-bg: {{.Background}};">
+  <div class="mesh"></div>
+  <div class="stack">
+    {{if .HasIcon}}<img class="splash-icon rise" data-splash-intro {{iconSrc .IconDataURI}} alt="">{{else}}<div class="splash-glyph rise" data-splash-intro>&gt;_</div>{{end}}
+    <div class="splash-title fade" data-splash-intro>{{.Title}}</div>
+    {{if .Tagline}}<div class="splash-tagline fade" data-splash-intro>{{.Tagline}}</div>{{end}}
+    <div class="splash-bar"></div>
+  </div>
+</div>

@@ -1,0 +1,27 @@
+<style>
+#splash[data-style="dia"] { --splash-fg: #1c1c1e; --splash-muted: rgba(0, 0, 0, 0.5); display: grid; place-items: center;
+  background: linear-gradient(160deg, var(--splash-bg), color-mix(in srgb, var(--splash-bg) 85%, var(--splash-accent))); }
+#splash[data-style="dia"] .orb { position: absolute; width: 420px; height: 420px; border-radius: 50%; z-index: 0;
+  background: radial-gradient(circle at 40% 40%, color-mix(in srgb, var(--splash-accent) 45%, white), transparent 65%);
+  filter: blur(30px); animation: splash-dia-breathe 3.2s ease-in-out infinite; }
+#splash[data-style="dia"] .stack { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 16px; text-align: center; }
+#splash[data-style="dia"] .splash-icon, #splash[data-style="dia"] .splash-glyph { width: 112px; height: 112px; border-radius: 28px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.18); }
+#splash[data-style="dia"] .splash-title { font-size: 32px; font-weight: 600; letter-spacing: 0.02em; }
+#splash[data-style="dia"] .splash-tagline { font-size: 15px; }
+#splash[data-style="dia"] .splash-bar { width: 140px; background: rgba(0, 0, 0, 0.08); }
+#splash[data-style="dia"][data-phase="intro"] .pop { animation: splash-dia-pop 700ms cubic-bezier(0.34, 1.4, 0.64, 1) both; }
+#splash[data-style="dia"][data-phase="intro"] .track { animation: splash-dia-track 800ms ease-out 250ms both; }
+@keyframes splash-dia-breathe { 0%, 100% { transform: scale(1); opacity: 0.8; } 50% { transform: scale(1.12); opacity: 1; } }
+@keyframes splash-dia-pop { from { opacity: 0; transform: scale(0.7); } to { opacity: 1; transform: none; } }
+@keyframes splash-dia-track { from { opacity: 0; letter-spacing: 0.3em; } to { opacity: 1; letter-spacing: 0.02em; } }
+</style>
+<div id="splash" data-style="dia" data-phase="{{.Phase}}" style="--splash-accent: {{.Accent}}; --splash-bg: {{.Background}};">
+  <div class="orb"></div>
+  <div class="stack">
+    {{if .HasIcon}}<img class="splash-icon pop" data-splash-intro {{iconSrc .IconDataURI}} alt="">{{else}}<div class="splash-glyph pop" data-splash-intro>&gt;_</div>{{end}}
+    <div class="splash-title track" data-splash-intro>{{.Title}}</div>
+    {{if .Tagline}}<div class="splash-tagline">{{.Tagline}}</div>{{end}}
+    <div class="splash-bar"></div>
+  </div>
+</div>

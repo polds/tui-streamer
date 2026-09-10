@@ -86,3 +86,33 @@ func TestRenderUnknownStyle(t *testing.T) {
 		t.Fatal("expected error for unknown style")
 	}
 }
+
+func TestRenderAllBuiltinStyles(t *testing.T) {
+	for _, style := range []string{"minimal", "arc", "dia", "jetbrains"} {
+		t.Run(style, func(t *testing.T) {
+			intro, err := Render(cfg(style), Inputs{Title: "App", Version: "v9", IconSVG: []byte("<svg/>"), Phase: PhaseIntro})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(intro.Body, `data-style="`+style+`"`) {
+				t.Errorf("missing data-style")
+			}
+			if !strings.Contains(intro.Body, "data-splash-intro") {
+				t.Errorf("intro phase must mark animated elements with data-splash-intro")
+			}
+			if !strings.Contains(intro.Body, "App") || !strings.Contains(intro.Body, "Tag &lt;b&gt;line&lt;/b&gt;") {
+				t.Errorf("title/tagline missing or unescaped")
+			}
+			if style == "jetbrains" && !strings.Contains(intro.Body, "v9") {
+				t.Errorf("jetbrains should show the version")
+			}
+			final, err := Render(cfg(style), Inputs{Title: "App", Phase: PhaseFinal})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(final.Body, `data-phase="final"`) {
+				t.Errorf("final phase attribute missing")
+			}
+		})
+	}
+}

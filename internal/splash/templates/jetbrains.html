@@ -1,0 +1,31 @@
+<style>
+#splash[data-style="jetbrains"] { display: grid; grid-template-columns: 42% 1fr; grid-template-rows: 1fr auto; }
+#splash[data-style="jetbrains"] .art { grid-row: 1 / span 2; position: relative; overflow: hidden;
+  background: linear-gradient(135deg, var(--splash-accent), color-mix(in srgb, var(--splash-accent) 40%, #000) 70%, #000); display: grid; place-items: center; }
+#splash[data-style="jetbrains"] .art::before { content: ""; position: absolute; inset: -40%;
+  background: conic-gradient(from 0deg, transparent, rgba(255, 255, 255, 0.18), transparent 30%);
+  animation: splash-jb-spin 9s linear infinite; }
+#splash[data-style="jetbrains"] .splash-icon, #splash[data-style="jetbrains"] .splash-glyph { position: relative; width: 120px; height: 120px; border-radius: 26px;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.45); }
+#splash[data-style="jetbrains"] .text { padding: 36px 40px; display: flex; flex-direction: column; justify-content: center; gap: 10px; }
+#splash[data-style="jetbrains"] .splash-title { font-size: 30px; font-weight: 700; }
+#splash[data-style="jetbrains"] .splash-tagline { font-size: 14px; }
+#splash[data-style="jetbrains"] .splash-version { margin-top: 14px; }
+#splash[data-style="jetbrains"] .splash-bar { grid-column: 2; height: 3px; border-radius: 0; }
+#splash[data-style="jetbrains"][data-phase="intro"] .slide { animation: splash-jb-slide 600ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+#splash[data-style="jetbrains"][data-phase="intro"] .slide.d1 { animation-delay: 120ms; }
+#splash[data-style="jetbrains"][data-phase="intro"] .slide.d2 { animation-delay: 240ms; }
+@keyframes splash-jb-spin { to { transform: rotate(360deg); } }
+@keyframes splash-jb-slide { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: none; } }
+</style>
+<div id="splash" data-style="jetbrains" data-phase="{{.Phase}}" style="--splash-accent: {{.Accent}}; --splash-bg: {{.Background}};">
+  <div class="art">
+    {{if .HasIcon}}<img class="splash-icon" {{iconSrc .IconDataURI}} alt="">{{else}}<div class="splash-glyph">&gt;_</div>{{end}}
+  </div>
+  <div class="text">
+    <div class="splash-title slide" data-splash-intro>{{.Title}}</div>
+    {{if .Tagline}}<div class="splash-tagline slide d1" data-splash-intro>{{.Tagline}}</div>{{end}}
+    <div class="splash-version slide d2" data-splash-intro>{{if .Version}}Version {{.Version}}{{else}}Starting&hellip;{{end}}</div>
+  </div>
+  <div class="splash-bar"></div>
+</div>

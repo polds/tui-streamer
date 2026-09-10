@@ -1,8 +1,8 @@
 <style>
 #splash[data-style="minimal"] { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px;
   font-family: "SF Mono", "Fira Code", "Cascadia Code", "JetBrains Mono", monospace; }
-#splash[data-style="minimal"] .logo { font-size: 5rem; font-weight: 700; color: var(--splash-accent); line-height: 1; letter-spacing: -0.02em; }
-#splash[data-style="minimal"] .logo .cursor { animation: splash-blink 1s step-end infinite; }
+#splash[data-style="minimal"] .splash-glyph { width: auto; height: auto; background: none; border-radius: 0; color: var(--splash-accent); font-size: 5rem; }
+#splash[data-style="minimal"] .splash-glyph .cursor { animation: splash-blink 1s step-end infinite; }
 #splash[data-style="minimal"] .label { font-size: 0.8rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--splash-muted); }
 #splash[data-style="minimal"] .splash-bar { width: 220px; height: 2px; }
 #splash[data-style="minimal"][data-phase="intro"] [data-splash-intro] { animation: splash-fade-up 500ms ease-out both; }
@@ -10,8 +10,7 @@
 @keyframes splash-fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 </style>
 <div id="splash" data-style="minimal" data-phase="{{.Phase}}" style="--splash-accent: {{.Accent}}; --splash-bg: {{.Background}};">
-  {{if .HasIcon}}<img class="splash-icon" data-splash-intro {{iconSrc .IconDataURI}} alt="">{{else}}<div class="splash-glyph" data-splash-intro>&gt;</div>{{end}}
-  <div class="logo" data-splash-intro>&gt;<span class="cursor">_</span></div>
+  {{if .HasIcon}}<img class="splash-icon" data-splash-intro {{iconSrc .IconDataURI}} alt="">{{else}}<div class="splash-glyph" data-splash-intro>&gt;<span class="cursor">_</span></div>{{end}}
   <div class="label">{{.Title}}{{if .Tagline}} &mdash; {{.Tagline}}{{else}} &mdash; Starting&hellip;{{end}}</div>
   <div class="splash-bar"></div>
 </div>
