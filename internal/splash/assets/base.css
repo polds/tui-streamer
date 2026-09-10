@@ -1,0 +1,42 @@
+/* Shared by every splash document. Everything is scoped under #splash so the
+   same markup works standalone and as an overlay inside index.html. */
+#splash {
+  --splash-accent: #7aa2f7;
+  --splash-bg: #1a1b26;
+  --splash-fg: #e6e6e6;
+  --splash-muted: rgba(255, 255, 255, 0.55);
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: var(--splash-bg);
+  color: var(--splash-fg);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  -webkit-user-select: none;
+  overflow: hidden;
+  opacity: 1;
+  transition: opacity 400ms ease;
+}
+#splash.splash-dismissing { opacity: 0; pointer-events: none; }
+#splash *, #splash *::before, #splash *::after { box-sizing: border-box; }
+#splash .splash-icon { width: 96px; height: 96px; display: block; }
+#splash .splash-glyph {
+  width: 96px; height: 96px; border-radius: 22px;
+  display: flex; align-items: center; justify-content: center;
+  font: 700 44px/1 "SF Mono", "JetBrains Mono", "Fira Code", monospace;
+  color: var(--splash-bg); background: var(--splash-accent);
+}
+#splash .splash-title { font-size: 28px; font-weight: 600; letter-spacing: -0.01em; }
+#splash .splash-tagline { font-size: 15px; color: var(--splash-muted); }
+#splash .splash-version { font-size: 12px; color: var(--splash-muted); font-variant-numeric: tabular-nums; }
+#splash .splash-bar { position: relative; height: 3px; overflow: hidden; background: rgba(255, 255, 255, 0.08); border-radius: 2px; }
+#splash .splash-bar::after {
+  content: ""; position: absolute; top: 0; left: 0; height: 100%; width: 40%;
+  background: linear-gradient(90deg, transparent, var(--splash-accent) 50%, transparent);
+  animation: splash-slide 1.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+@keyframes splash-slide { from { transform: translateX(-100%); } to { transform: translateX(350%); } }
+@media (prefers-reduced-motion: reduce) {
+  #splash [data-splash-intro] { animation: none !important; }
+}
