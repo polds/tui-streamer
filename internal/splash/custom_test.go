@@ -134,6 +134,25 @@ func TestCustomPageSkipsAbsoluteAndDataRefs(t *testing.T) {
 	}
 }
 
+func TestCustomPageIgnoresEncodedFragmentInsideDataURI(t *testing.T) {
+	// An inline SVG data URI commonly references its own filter via url(%23id).
+	// That is a fragment, not a file; the inliner must leave it alone.
+	const page = `<html><head><style>
+#splash .noise { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'/%3E%3Crect filter='url(%23n)'/%3E%3C/svg%3E"); }
+</style></head><body><div class="noise"></div></body></html>`
+	c := writeCustom(t, page)
+	doc, err := Render(c, Inputs{Title: "T"})
+	if err != nil {
+		t.Fatalf("Render should not treat url(%%23n) as an asset: %v", err)
+	}
+	if !strings.Contains(doc.Head, "filter='url(%23n)'") {
+		t.Errorf("encoded fragment reference should be untouched, head: %s", doc.Head)
+	}
+	if assets, err := Assets(c); err != nil || len(assets) != 0 {
+		t.Errorf("Assets() = %v, %v; want none", assets, err)
+	}
+}
+
 func TestCustomPageSizeCap(t *testing.T) {
 	c := writeCustom(t, `<html><body><img src="big.bin"></body></html>`)
 	big := make([]byte, 11<<20)

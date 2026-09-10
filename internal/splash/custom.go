@@ -46,6 +46,11 @@ func isRelativeRef(ref string) bool {
 	if r == "" || strings.HasPrefix(r, "#") || strings.HasPrefix(r, "/") || strings.HasPrefix(r, "data:") {
 		return false
 	}
+	// A percent-encoded fragment (url(%23id) inside an SVG data URI) is still
+	// a fragment, not a file.
+	if strings.HasPrefix(strings.ToLower(r), "%23") {
+		return false
+	}
 	if strings.Contains(r, "://") || strings.HasPrefix(r, "//") || strings.HasPrefix(r, "javascript:") {
 		return false
 	}
