@@ -67,6 +67,44 @@ spec:
 	}
 }
 
+func TestSplashExplicitZeroMinDuration(t *testing.T) {
+	// Test that explicit minDuration: 0s results in 0, not the default 1200ms
+	f, err := Parse([]byte(`
+apiVersion: v1
+kind: Bundle
+metadata:
+  name: ExplicitZero
+  splash:
+    minDuration: 0s
+spec:
+  sessions: []
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Splash.MinDuration != 0 {
+		t.Errorf("explicit minDuration: 0s should be honoured, got %v", f.Splash.MinDuration)
+	}
+
+	// Also test bare "0" format (edge case)
+	f2, err := Parse([]byte(`
+apiVersion: v1
+kind: Bundle
+metadata:
+  name: BareZero
+  splash:
+    minDuration: 0
+spec:
+  sessions: []
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f2.Splash.MinDuration != 0 {
+		t.Errorf("explicit minDuration: 0 should be honoured, got %v", f2.Splash.MinDuration)
+	}
+}
+
 func TestSplashJetBrainsDefaultsToCard(t *testing.T) {
 	f, err := Parse([]byte(`
 apiVersion: v1
