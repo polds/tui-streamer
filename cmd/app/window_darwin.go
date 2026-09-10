@@ -63,6 +63,11 @@ func parseHexColor(s string) (r, g, b float64, ok bool) {
 }
 
 // applyCardWindow turns the webview's window into a borderless centred card.
+//
+// Threading: must be called synchronously on the main goroutine, before
+// wv.Run() starts the webview's event loop — not via wv.Dispatch. Calling it
+// after Run() (or off the main goroutine) risks a visible flash of the
+// titled window and is not the pattern this function is written against.
 func applyCardWindow(win unsafe.Pointer, w, h int, background string) {
 	r, g, b, ok := parseHexColor(background)
 	has := 0
@@ -73,6 +78,11 @@ func applyCardWindow(win unsafe.Pointer, w, h int, background string) {
 }
 
 // restoreMainWindow returns the window to its normal chrome and size.
+//
+// Threading: unlike applyCardWindow, this runs after wv.Run() has started
+// the webview's event loop, so it must be called on the UI thread via
+// wv.Dispatch — never directly from another goroutine (AppKit is not
+// thread-safe for window mutation).
 func restoreMainWindow(win unsafe.Pointer, w, h int, title string) {
 	ct := C.CString(title)
 	defer C.free(unsafe.Pointer(ct))

@@ -68,10 +68,10 @@ func main() {
 		}
 	}
 
-	port  := flag.String("port",  "0",            "TCP port to listen on (0 = random free port)")
-	dir   := flag.String("dir",   ".",             "default working directory for commands")
-	title := flag.String("title", defaultTitle,  "window title")
-	debug := flag.Bool("debug",   false,            "enable WKWebView inspector / DevTools")
+	port := flag.String("port", "0", "TCP port to listen on (0 = random free port)")
+	dir := flag.String("dir", ".", "default working directory for commands")
+	title := flag.String("title", defaultTitle, "window title")
+	debug := flag.Bool("debug", false, "enable WKWebView inspector / DevTools")
 
 	var allowed multiFlag
 	flag.Var(&allowed, "allow", "whitelist a binary name (repeat for multiple)")
@@ -133,7 +133,7 @@ func main() {
 		srv.ImportFile(b)
 	}
 	addr := ":" + *port
-	url  := "http://localhost" + addr
+	url := "http://localhost" + addr
 
 	// ── start HTTP server in the background ─────────────────────────────────
 	go func() {
@@ -152,30 +152,31 @@ func main() {
 	wv.SetTitle(*title)
 	if card {
 		wv.SetSize(splashCfg.Size[0], splashCfg.Size[1], webview.HintNone)
+		// Must run synchronously here, before wv.Run() starts the event
+		// loop — see applyCardWindow's doc comment.
 		applyCardWindow(wv.Window(), splashCfg.Size[0], splashCfg.Size[1], splashCfg.Background)
 	} else {
 		wv.SetSize(mainW, mainH, webview.HintNone)
 	}
 
-	// Show the splash immediately so the user has feedback while the HTTP
-	// server finishes binding its socket.
-	doc, err := splash.Render(splashCfg, splash.Inputs{Title: *title, Version: version, IconSVG: iconSVG, Phase: splash.PhaseIntro})
-	if err != nil {
-		log.Fatalf("splash: %v", err)
-	}
-	splashShown := time.Now()
-	wv.SetHtml(doc.HTML)
-
 	// ── handoff state machine ────────────────────────────────────────────────
 	// Navigate to the UI when the splash intro has finished and the server is
 	// up (or after 10s regardless). In card mode, restore the main window once
-	// the UI's overlay reports it has faded out.
+	// the UI's overlay reports it has faded out, or once a watchdog fires if
+	// it never does.
 	var (
-		handoffMu sync.Mutex
-		animated  bool
-		serverUp  bool
-		navigated bool
+		handoffMu   sync.Mutex
+		animated    bool
+		serverUp    bool
+		navigated   bool
+		restoreOnce sync.Once
+		splashShown time.Time
 	)
+	restore := func() {
+		restoreOnce.Do(func() {
+			wv.Dispatch(func() { restoreMainWindow(wv.Window(), mainW, mainH, *title) })
+		})
+	}
 	navigate := func() {
 		handoffMu.Lock()
 		defer handoffMu.Unlock()
@@ -189,7 +190,24 @@ func main() {
 		}
 		target := url + "/?splash=final&remaining=" + strconv.FormatInt(remaining.Milliseconds(), 10)
 		wv.Dispatch(func() { wv.Navigate(target) })
+		if card {
+			// Watchdog: the UI overlay normally reports "dismissed" once its
+			// own fade finishes, which calls restore() below. If it never
+			// does (e.g. the page failed to load, or a custom splash page's
+			// JS never calls splash.dismiss()), force the window back after
+			// a generous grace period rather than leaving a borderless card
+			// on screen forever.
+			time.AfterFunc(splashCfg.MinDuration+15*time.Second, func() {
+				restoreOnce.Do(func() {
+					log.Printf("splash: overlay never reported dismissed; restoring window")
+					wv.Dispatch(func() { restoreMainWindow(wv.Window(), mainW, mainH, *title) })
+				})
+			})
+		}
 	}
+	// Bind before SetHtml: the splash page's shim calls __splashPost as soon
+	// as it fires 'animated', which can happen immediately on load, so the
+	// binding must already exist by the time SetHtml loads any content.
 	wv.Bind("__splashPost", func(name string) {
 		switch name {
 		case "animated":
@@ -199,10 +217,20 @@ func main() {
 			navigate()
 		case "dismissed":
 			if card {
-				wv.Dispatch(func() { restoreMainWindow(wv.Window(), mainW, mainH, *title) })
+				restore()
 			}
 		}
 	})
+
+	// Show the splash immediately so the user has feedback while the HTTP
+	// server finishes binding its socket.
+	doc, err := splash.Render(splashCfg, splash.Inputs{Title: *title, Version: version, IconSVG: iconSVG, Phase: splash.PhaseIntro})
+	if err != nil {
+		log.Fatalf("splash: %v", err)
+	}
+	splashShown = time.Now()
+	wv.SetHtml(doc.HTML)
+
 	go func() {
 		waitForServer(url, 10*time.Second)
 		handoffMu.Lock()
