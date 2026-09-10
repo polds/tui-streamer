@@ -5,28 +5,33 @@ import (
 	"path/filepath"
 )
 
-// LoadIconSVG returns the app icon SVG for splash rendering: the packaged
-// Contents/Resources/AppIcon.svg when running inside a .app, otherwise
-// appIcon resolved relative to bundlePath. Returns nil when nothing is found.
+// LoadIconSVG returns the app icon SVG for splash rendering, trying in
+// order: the packaged Contents/Resources/AppIcon.svg when running inside a
+// .app, appIcon resolved relative to bundlePath, and (dev mode, running from
+// the repo root) build/darwin/AppIcon.svg relative to the current working
+// directory. Returns nil when none of these are found.
 func LoadIconSVG(bundlePath, appIcon string) []byte {
 	if dir := PackagedResourcesDir(); dir != "" {
 		if b, err := os.ReadFile(filepath.Join(dir, "AppIcon.svg")); err == nil {
 			return b
 		}
 	}
-	if appIcon == "" {
-		return nil
-	}
-	p := appIcon
-	if !filepath.IsAbs(p) {
-		if bundlePath == "" {
-			return nil
+	if appIcon != "" {
+		p := appIcon
+		if !filepath.IsAbs(p) && bundlePath != "" {
+			p = filepath.Join(filepath.Dir(bundlePath), p)
 		}
-		p = filepath.Join(filepath.Dir(bundlePath), p)
+		if !filepath.IsAbs(p) && bundlePath == "" {
+			p = ""
+		}
+		if p != "" {
+			if b, err := os.ReadFile(p); err == nil {
+				return b
+			}
+		}
 	}
-	b, err := os.ReadFile(p)
-	if err != nil {
-		return nil
+	if b, err := os.ReadFile(filepath.Join("build", "darwin", "AppIcon.svg")); err == nil {
+		return b
 	}
-	return b
+	return nil
 }

@@ -253,6 +253,7 @@ metadata:
     accent: "#bd93f9"
     background: "#282a36"
     minDuration: 1500ms
+    size: [640, 400]           # card only; 200..4000
 spec:
   theme: nord                  # default UI theme
   themes:                      # optional allowlist; omit for all built-in themes
@@ -322,7 +323,18 @@ images, fonts and stylesheets are inlined, and the page must call
 
 The splash is dismissed only when its intro animation has finished **and** the
 UI is connected **and** `minDuration` (default `1200ms`) has elapsed, then it
-fades out over 400 ms. `GET /api/config` exposes the non-HTML fields.
+fades out over 400 ms. `size: [width, height]` (default `[640, 400]`, each
+value 200..4000) sets the card's dimensions and only applies to
+`window: card`. `GET /api/config` exposes the non-HTML fields.
+
+Every `<style>`/`<script>` element the splash injects into `<head>` (base CSS,
+the built-in template's CSS, and — for a custom `html:` page — its own head
+`<style>`/`<script>` blocks and any inlined `<link rel="stylesheet">`) is
+marked with a `data-splash` attribute and removed on dismissal, alongside
+`#splash` itself. A custom page's CSS is still cleaned up even if it targets
+selectors outside `#splash`, but scope it under `#splash` anyway (e.g.
+`#splash h1 { … }`) to avoid it briefly affecting the rest of the page during
+the moment the splash is visible.
 
 #### Command allowlists
 

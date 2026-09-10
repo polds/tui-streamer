@@ -160,6 +160,14 @@ if [[ -n "${BUNDLE_FILE}" ]]; then
   fi
 fi
 
+# Fall back to the stock SVG so Contents/Resources/AppIcon.svg is always
+# present in a packaged app — even with no BUNDLE, or a bundle that didn't
+# set metadata.appIcon — since the splash renderer's icon lookup checks
+# Resources/AppIcon.svg before anything else.
+if [[ -z "${ICON_SVG}" && -f "${REPO_ROOT}/build/darwin/AppIcon.svg" ]]; then
+  ICON_SVG="${REPO_ROOT}/build/darwin/AppIcon.svg"
+fi
+
 # Build Info.plist from template
 PLIST_OUT="${CONTENTS}/Info.plist"
 LSUIELEMENT="true"

@@ -155,12 +155,14 @@ spec:
 
 func TestSplashValidation(t *testing.T) {
 	cases := map[string]string{
-		"bad style":    "style: neon",
-		"bad window":   "window: popup",
-		"bad accent":   `accent: "red; } </style><script>"`,
-		"bad duration": "minDuration: soon",
-		"size small":   "size: [10, 400]",
-		"size len":     "size: [640]",
+		"bad style":      "style: neon",
+		"bad window":     "window: popup",
+		"bad accent":     `accent: "red; } </style><script>"`,
+		"bad background": `background: "x; }"`,
+		"bad duration":   "minDuration: soon",
+		"size small":     "size: [10, 400]",
+		"size large":     "size: [640, 5000]",
+		"size len":       "size: [640]",
 	}
 	for name, field := range cases {
 		t.Run(name, func(t *testing.T) {

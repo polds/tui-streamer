@@ -159,12 +159,19 @@ double-count).
   - `restoreMain(win)`: `styleMask = Titled|Closable|Miniaturizable|Resizable`,
     `setFrame:display:animate:YES` to a centred 1280×800 (current default),
     `setTitle:` again (borderless windows drop it), `makeKeyAndOrderFront:`.
-  - Both run via `wv.Dispatch` on the UI thread. `full` mode never calls them.
+  - `applyCard` runs synchronously on the main goroutine, before `wv.Run()`
+    starts the webview's event loop — not via `wv.Dispatch` — to avoid a
+    visible flash of the titled window. `restoreMain` runs after `Run()`, so
+    it must go through `wv.Dispatch` on the UI thread. `full` mode never
+    calls either.
 - Bind: `__splashPost(name)` receives `animated` / `dismissed` from whichever
   page is loaded (the standalone splash, then the UI's overlay — webview
-  bindings persist across navigations).
-- Handoff sequence (single fade): `animated ∧ server-up ∧ minDuration` →
-  `Navigate(url?splash=final&remaining=N)`. The standalone splash is **not**
+  bindings persist across navigations). The `Bind` call is registered before
+  `SetHtml` loads any page, since the shim can fire `animated` immediately.
+- Handoff sequence (single fade): `animated ∧ server-up` →
+  `Navigate(url?splash=final&remaining=N)`, where `remaining` is what is left
+  of `minDuration` (0 if it already elapsed) — `minDuration` gates how much
+  time is forwarded, not whether the navigation happens. The standalone splash is **not**
   faded; the UI's overlay renders the same resting frame on the same
   background, so the navigation is visually seamless, and `app.js` fades it
   once its own `connected` holds. On the overlay's `dismissed`, card mode runs
@@ -181,9 +188,14 @@ double-count).
   `?splash=final`, extracts the document's `<style>` and `<body>` content,
   scopes styles under `#splash` (prefix selectors; templates are written to
   tolerate this), injects them into `#splash`, removes `hidden`, and adds
-  `window.SPLASH_CONFIG` (`phase`, `minDurationMs`, `remainingMs`,
-  `background`). Custom HTML is injected the same way (its `<script>`s run in
-  the page; documented as trusted bundle content, like commands).
+  `window.SPLASH` (`phase`, `minDurationMs`, `remainingMs`, `background` —
+  the single config object; there is no separate `SPLASH_CONFIG`). Custom
+  HTML is injected the same way (its `<script>`s run in the page; documented
+  as trusted bundle content, like commands). Every `<style>`/`<script>`
+  block placed in `<head>` (base CSS, template CSS, and — for custom HTML —
+  its head blocks and inlined stylesheets, plus the `window.SPLASH`/shim
+  scripts) carries a `data-splash` attribute, which `app.js` uses to remove
+  all of them, not just `#splash`, on `splash:dismissed`.
 - `app.js` `Splash` controller: waits for `splash:animated`, tracks
   `connected` (see §2), honours `minDuration`/`remaining`, calls
   `splash.dismiss()`, and on `splash:dismissed` removes `#splash`; when
@@ -201,10 +213,11 @@ double-count).
   `html` against `Resources/` when the bundle path is the packaged one.
 - Built-in styles ship nothing extra. The icon is already at
   `Resources/AppIcon.svg`.
-- `examples/tui-path` gets `splash: {style: arc}`; `examples/icloud-sync` gets
-  `splash: {style: jetbrains, tagline: …, accent: "#5b8def"}` so both window
-  modes are exercised by shipped examples. README + CLAUDE.md schema tables
-  updated.
+- `examples/tui-path` gets `splash: {style: arc}`; `examples/network-bundle`
+  gets `splash: {style: jetbrains, window: card, tagline: …, accent:
+  "#bd93f9"}` so both window modes are exercised by shipped examples.
+  (`examples/icloud-sync` is not part of this branch.) README + CLAUDE.md
+  schema tables updated.
 
 ## 6. Testing
 
@@ -216,7 +229,8 @@ double-count).
   classes; icon becomes a data URI; custom HTML gets shim + inlined assets;
   oversized asset set errors.
 - `internal/server`: `/api/config.splash`; `handleIndex` injects `#splash` +
-  `SPLASH_CONFIG`; `?splash=final` flips phase and forwards `remaining`.
+  `window.SPLASH`; `?splash=final` flips phase and forwards `remaining`
+  (clamped to `[0, minDurationMs]`).
 - `cmd/app`: cgo window code is thin and verified manually with `make app` on
   both examples (card grows into the main window; full crossfades). `go vet`
   covers the darwin build tag.

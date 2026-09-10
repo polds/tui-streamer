@@ -281,6 +281,7 @@ metadata:
     accent: "#bd93f9"
     background: "#282a36"
     minDuration: 1500ms
+    size: [640, 400]              # card only; 200..4000
 spec:
   theme: nord                     # default UI theme
   themes:                         # optional allowlist; omit = all built-in themes
@@ -317,7 +318,11 @@ served at `GET /api/config`.
 
 **Splash:** `metadata.splash` configures the animated startup splash (built-in
 `style` or custom `html:`); see README "Splash" for the field reference and
-Architecture → **Splash** above for the render/host/protocol details.
+Architecture → **Splash** above for the render/host/protocol details. Every
+`<style>`/`<script>` the renderer places in `<head>` carries a `data-splash`
+attribute and is stripped on dismissal along with `#splash`; scope a custom
+page's CSS under `#splash` anyway to avoid it briefly affecting the rest of
+the page while the splash is visible.
 
 #### Session fields populated from a bundle
 
