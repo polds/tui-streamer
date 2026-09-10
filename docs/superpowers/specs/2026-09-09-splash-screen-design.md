@@ -129,13 +129,14 @@ host → page : splash.dismiss()     host calls when animated ∧ connected ∧ 
 page → host : splash.dismissed()   fade complete (auto after 400 ms if the page doesn't call it)
 ```
 
-Transport: the shim posts events through `window.__splashHost.post(name)` if
-present (native host binds it), else dispatches `CustomEvent('splash:'+name)`
-on `document` (browser host). Templates only call `splash.*`.
+Transport: the shim calls `window.__splashPost(name)` when the native host
+has bound it, and always dispatches `CustomEvent('splash:'+name)` on
+`document` (browser host). Templates only call `splash.*`.
 
 `connected` means:
-- native: `/api/config` responded **and** the UI page reported its first
-  WebSocket open (`splashConnected` bind), or the UI has no sessions;
+- native (standalone splash → UI navigation): the server answered an HTTP
+  request; the UI's own overlay then applies the browser rule below before
+  fading;
 - browser: `/api/sessions` loaded **and** the first `SessionSocket` opened, or
   there are no sessions.
 
@@ -159,12 +160,16 @@ double-count).
     `setFrame:display:animate:YES` to a centred 1280×800 (current default),
     `setTitle:` again (borderless windows drop it), `makeKeyAndOrderFront:`.
   - Both run via `wv.Dispatch` on the UI thread. `full` mode never calls them.
-- Binds: `__splashHost.post(name)` receives `animated` / `dismissed`;
-  `splashConnected()` is called by `app.js` on first WebSocket open.
-- Handoff sequence: `animated ∧ connected(server) ∧ minDuration` →
-  `Eval("splash.dismiss()")` → on `dismissed` → `Navigate(url?splash=final&remaining=N)`
-  → (card) `restoreMain` → UI overlay (final frame, same background) is
-  dismissed by `app.js` when its own `connected` holds.
+- Bind: `__splashPost(name)` receives `animated` / `dismissed` from whichever
+  page is loaded (the standalone splash, then the UI's overlay — webview
+  bindings persist across navigations).
+- Handoff sequence (single fade): `animated ∧ server-up ∧ minDuration` →
+  `Navigate(url?splash=final&remaining=N)`. The standalone splash is **not**
+  faded; the UI's overlay renders the same resting frame on the same
+  background, so the navigation is visually seamless, and `app.js` fades it
+  once its own `connected` holds. On the overlay's `dismissed`, card mode runs
+  `restoreMain`. A safety timer (`minDuration + 5 s`) forces `animated` for
+  custom pages that never report it.
 - Timeout: if the server never answers within 10 s, dismiss anyway and
   navigate (today's behaviour), logging a warning.
 
