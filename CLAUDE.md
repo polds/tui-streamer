@@ -60,7 +60,7 @@ tui-streamer/
 
 The backend uses a **session-based multiplexing** model:
 
-1. **Bundle** (`internal/bundle/`) — YAML parser for bundle files. Supports two document kinds: `Bundle` (a named group of sessions) and `BundleSet` (an ordered list of `Bundle` references). A single file may contain multiple `---`-separated YAML documents. Exposes `Load(path)` and `Parse(data)`. File-level options (`appIcon`, `theme`, `themes`, `allow`, `files`) live on the `BundleSet` (or the first `Bundle` when there is no set). Extra files are staged into `TUI_PATH`; allowlists merge with CLI `-allow` as a union.
+1. **Bundle** (`internal/bundle/`) — YAML parser for bundle files. Supports two document kinds: `Bundle` (a named group of sessions) and `BundleSet` (an ordered list of `Bundle` references). A single file may contain multiple `---`-separated YAML documents. Exposes `Load(path)` and `Parse(data)`. File-level options (`appIcon`, `splash`, `theme`, `themes`, `allow`, `files`) live on the `BundleSet` (or the first `Bundle` when there is no set). Extra files are staged into `TUI_PATH`; allowlists merge with CLI `-allow` as a union.
 2. **Session** (`internal/session/session.go`) — Named execution context. Holds state (ID, name, timestamps, running flag), a map of subscribed WebSocket clients, a cancel function for the running process, and a bounded replay buffer (up to 2,000 lines) so clients that connect after execution started receive prior output. Also carries optional bundle metadata: `PendingCommand`, `BundleName`, and `Description`.
 3. **Manager** (`internal/session/manager.go`) — Thread-safe registry (UUID → `*Session`). Provides Create/Get/List/Delete.
 4. **Executor** (`internal/executor/executor.go`) — Spawns a process, reads stdout/stderr concurrently in separate goroutines, and emits `Line` structs with Unix-millisecond timestamps and line type (`stdout`, `stderr`, `start`, `exit`, `error`). After the process exits or is cancelled, pipes are forcibly closed after a 5-second drain delay to prevent goroutine leaks. When `TUIPath` is set, it is exported as the `TUI_PATH` environment variable, prepended to `PATH`, and substituted for `${TUI_PATH}` / `$TUI_PATH` / `$(TUI_PATH)` in the command.
@@ -168,7 +168,7 @@ CLI `-allow` is **unioned** with bundle `spec.allow`. If neither is set, all
 commands are allowed. Matching uses the command's basename, so a bundled
 `${TUI_PATH}/gum` is allowed when `gum` is listed.
 
-**Notes on `-bundle`**: the bundle's `BundleSet` or top-level `Bundle` `metadata.name` is used as the window title unless `-title` is also provided. Sessions with `autorun: true` start executing immediately on server startup. File-level options (`appIcon`, `theme`, `themes`, `allow`, `files`) come from the `BundleSet` when present, otherwise from the first `Bundle`.
+**Notes on `-bundle`**: the bundle's `BundleSet` or top-level `Bundle` `metadata.name` is used as the window title unless `-title` is also provided. Sessions with `autorun: true` start executing immediately on server startup. File-level options (`appIcon`, `splash`, `theme`, `themes`, `allow`, `files`) come from the `BundleSet` when present, otherwise from the first `Bundle`.
 
 ### Adding a New REST Endpoint
 
@@ -274,9 +274,9 @@ kind: BundleSet
 metadata:
   name: Network Troubleshooting   # top-level name; becomes window title
   appIcon: ./icon.svg             # optional SVG for `make app BUNDLE=...`
-  splash:                      # optional startup splash (README "Splash")
-    style: jetbrains           # minimal | arc | dia | jetbrains
-    window: card                # full | card (jetbrains defaults to card)
+  splash:                         # optional startup splash (README "Splash")
+    style: jetbrains              # minimal | arc | dia | jetbrains
+    window: card                  # full | card (jetbrains defaults to card)
     tagline: Connectivity & DNS diagnostics
     accent: "#bd93f9"
     background: "#282a36"

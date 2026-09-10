@@ -248,7 +248,7 @@ metadata:
   appIcon: ./icon.svg          # optional SVG used by `make app BUNDLE=...`
   splash:                      # optional startup splash (see "Splash" below)
     style: jetbrains           # minimal | arc | dia | jetbrains
-    window: card                # full | card (jetbrains defaults to card)
+    window: card               # full | card (jetbrains defaults to card)
     tagline: Connectivity & DNS diagnostics
     accent: "#bd93f9"
     background: "#282a36"
@@ -295,8 +295,9 @@ spec:
 ```
 
 A standalone `Bundle` (no `BundleSet`) may use the same `metadata.appIcon`,
-`spec.theme`, `spec.themes`, `spec.allow`, and `spec.files` fields. When a
-`BundleSet` is present it is the source of truth for those file-level options.
+`metadata.splash`, `spec.theme`, `spec.themes`, `spec.allow`, and `spec.files`
+fields. When a `BundleSet` is present it is the source of truth for those
+file-level options.
 
 #### Themes
 
