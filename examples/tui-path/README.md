@@ -1,10 +1,11 @@
 # TUI Path Demo
 
-A small BundleSet that exercises the four file-level options:
+A small BundleSet that exercises five file-level options:
 
 | Field | What this example does |
 |---|---|
 | `metadata.appIcon` | Uses `icon.svg` when packaging `make app BUNDLE=...` |
+| `metadata.splash` | Arc-style animated splash (`style: arc`) shared by the .app and the browser |
 | `spec.theme` / `spec.themes` | Locks the UI to the **nord** theme and hides the picker |
 | `spec.allow` | Permits `echo`, `sh`, and `demo-tool` only |
 | `spec.files` | Copies `bin/demo-tool` into `TUI_PATH` |

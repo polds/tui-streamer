@@ -246,6 +246,13 @@ kind: BundleSet
 metadata:
   name: Network Troubleshooting
   appIcon: ./icon.svg          # optional SVG used by `make app BUNDLE=...`
+  splash:                      # optional startup splash (see "Splash" below)
+    style: jetbrains           # minimal | arc | dia | jetbrains
+    window: card                # full | card (jetbrains defaults to card)
+    tagline: Connectivity & DNS diagnostics
+    accent: "#bd93f9"
+    background: "#282a36"
+    minDuration: 1500ms
 spec:
   theme: nord                  # default UI theme
   themes:                      # optional allowlist; omit for all built-in themes
@@ -301,6 +308,20 @@ ignored when it is not in the allowlist. The server injects the config into
 Built-in theme names: `catppuccin-macchiato` (default), `catppuccin-latte`,
 `catppuccin-frappe`, `catppuccin-mocha`, `dark`, `dracula`, `matrix`, `nord`,
 `solarized`, `light`.
+
+#### Splash
+
+`metadata.splash` configures an animated splash shown while the app starts —
+in the native `.app` (before the server is even up) and as an overlay in the
+browser UI. Built-in styles: `minimal` (default), `arc` and `dia`
+(full-window), `jetbrains` (borderless centred card that grows into the main
+window). `html: ./splash.html` replaces the style with your own page: relative
+images, fonts and stylesheets are inlined, and the page must call
+`splash.animated()` when its intro is done (or it is assumed done after 5 s).
+
+The splash is dismissed only when its intro animation has finished **and** the
+UI is connected **and** `minDuration` (default `1200ms`) has elapsed, then it
+fades out over 400 ms. `GET /api/config` exposes the non-HTML fields.
 
 #### Command allowlists
 

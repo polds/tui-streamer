@@ -4,6 +4,11 @@ kind: BundleSet
 metadata:
   name: TUI Path Demo
   appIcon: ./icon.svg
+  splash:
+    style: arc
+    tagline: Bundled tools, zero setup
+    accent: "#88c0d0"
+    background: "#2e3440"
 spec:
   theme: nord
   themes:

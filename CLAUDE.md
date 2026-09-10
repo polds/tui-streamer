@@ -26,6 +26,7 @@ tui-streamer/
 │   ├── bundle/              # YAML parser, allowlists, TUI_PATH file staging
 │   ├── executor/executor.go # Command execution engine (streaming output)
 │   ├── server/server.go     # HTTP routes and WebSocket upgrade handler
+│   ├── splash/              # Splash renderer: built-in styles, custom html, readiness shim
 │   └── session/
 │       ├── manager.go       # Thread-safe session registry
 │       ├── session.go       # Session state + client broadcast
@@ -75,6 +76,7 @@ The backend uses a **session-based multiplexing** model:
    - `POST /api/sessions/{id}/exec` — execute command in session
    - `POST /api/sessions/{id}/kill` — kill running process
    - `POST /api/bundles` — import a YAML bundle (creates sessions, optionally autoruns commands)
+7. **Splash** (`internal/splash/`) — Renders the configurable startup splash shown while the app starts, built-in styles (`minimal`, `arc`, `dia`, `jetbrains`) or a custom `html:` page with relative assets inlined, as one self-contained document shared by both hosts. Native host: `cmd/app` calls `wv.SetHtml(doc.HTML)` before the server is even up, then switches the window into a borderless card via cgo (`applyCardWindow`) and back via `restoreMainWindow` on handoff. Browser host: `handleIndex` injects the overlay into `index.html`; `web/static/app.js`'s `Splash` controller drives it client-side. Both hosts follow the same readiness protocol: `animated → dismiss → dismissed`.
 
 ### Frontend (Vanilla JS)
 
@@ -208,6 +210,12 @@ commands are allowed. Matching uses the command's basename, so a bundled
 3. Add the name to `bundle.BuiltInThemes` in `internal/bundle/themes.go` so bundle `spec.themes` validation accepts it.
 4. No other JS changes needed — the `App` class reads the selector and `window.THEME_CONFIG`.
 
+### Adding a New Splash Style
+
+1. Add `internal/splash/templates/<name>.html` (a `<style>` block then the `#splash` div; mark intro-animated elements with `data-splash-intro` and gate their keyframes on `[data-phase="intro"]`).
+2. Add the name to the `style` switch in `internal/bundle/splash.go`.
+3. Add it to `TestRenderAllBuiltinStyles`.
+
 ### WebSocket Protocol
 
 Messages are JSON objects (one per WebSocket text frame):
@@ -266,6 +274,13 @@ kind: BundleSet
 metadata:
   name: Network Troubleshooting   # top-level name; becomes window title
   appIcon: ./icon.svg             # optional SVG for `make app BUNDLE=...`
+  splash:                      # optional startup splash (README "Splash")
+    style: jetbrains           # minimal | arc | dia | jetbrains
+    window: card                # full | card (jetbrains defaults to card)
+    tagline: Connectivity & DNS diagnostics
+    accent: "#bd93f9"
+    background: "#282a36"
+    minDuration: 1500ms
 spec:
   theme: nord                     # default UI theme
   themes:                         # optional allowlist; omit = all built-in themes
@@ -299,6 +314,10 @@ and `$(TUI_PATH)`. `POST /api/bundles` cannot stage files (no on-disk tree).
 A single-entry list hides the picker. Persisted `localStorage` themes outside
 the allowlist are ignored. Config is injected as `window.THEME_CONFIG` and
 served at `GET /api/config`.
+
+**Splash:** `metadata.splash` configures the animated startup splash (built-in
+`style` or custom `html:`); see README "Splash" for the field reference and
+Architecture → **Splash** above for the render/host/protocol details.
 
 #### Session fields populated from a bundle
 
@@ -338,6 +357,7 @@ Go standard library is used for HTTP, JSON, process execution, embedding, and sy
 - **No authentication**: the server assumes a trusted local network. Do not expose it publicly without adding auth.
 - **WebSocket origin check** is permissive (`CheckOrigin` returns `true`) — appropriate for local dev, not for multi-tenant deployments.
 - **HTML escaping**: the `AnsiParser` in `app.js` escapes all output before DOM insertion; do not bypass this.
+- **Custom splash HTML**: a bundle's `splash.html` page runs its own `<script>` inside the UI page in browser mode — it is trusted bundle content, the same trust level as a `command:` string, not sandboxed content.
 
 ---
 
