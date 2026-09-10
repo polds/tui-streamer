@@ -2,7 +2,6 @@ package server
 
 import (
 	"log"
-	"strings"
 
 	"github.com/polds/tui-streamer/internal/bundle"
 	"github.com/polds/tui-streamer/internal/executor"
@@ -43,7 +42,12 @@ func (s *Server) ImportFile(f *bundle.File) {
 }
 
 func (s *Server) autoExec(sess *session.Session, entry bundle.Entry) {
-	opts := s.execOptions(strings.Fields(entry.Command))
+	words, err := executor.SplitCommand(entry.Command)
+	if err != nil {
+		log.Printf("bundle: skip auto-exec %q: invalid command: %v", entry.Name, err)
+		return
+	}
+	opts := s.execOptions(words)
 	if !bundle.CommandAllowed(s.allowed(), opts.Command) {
 		log.Printf("bundle: skip auto-exec %q: command not allowed", entry.Name)
 		return

@@ -13,6 +13,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/polds/tui-streamer/internal/bundle"
+	"github.com/polds/tui-streamer/internal/executor"
 	"github.com/polds/tui-streamer/internal/session"
 )
 
@@ -246,7 +247,7 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request, sess *sessio
 	}
 
 	// Accept command as either a JSON array (["cmd","arg"]) or a plain string
-	// ("cmd arg") which is split on whitespace.
+	// ("cmd 'quoted arg'") which is split with shell quoting rules.
 	var command []string
 	if len(req.Command) > 0 {
 		if err := json.Unmarshal(req.Command, &command); err != nil {
@@ -255,7 +256,12 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request, sess *sessio
 				http.Error(w, `{"error":"command must be a string or array of strings"}`, http.StatusBadRequest)
 				return
 			}
-			command = strings.Fields(s)
+			words, err := executor.SplitCommand(s)
+			if err != nil {
+				http.Error(w, `{"error":"invalid command: `+err.Error()+`"}`, http.StatusBadRequest)
+				return
+			}
+			command = words
 		}
 	}
 	if len(command) == 0 {

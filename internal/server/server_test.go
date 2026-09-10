@@ -5,10 +5,13 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/polds/tui-streamer/internal/session"
 )
 
@@ -70,5 +73,79 @@ func TestExecAllowlist(t *testing.T) {
 	s.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403", rec.Code)
+	}
+}
+
+// replayLines runs cmd in a fresh session over a live test server, waits for
+// it to finish, then returns the replayed output frames a late WebSocket
+// subscriber receives.
+func replayLines(t *testing.T, cmd string) []map[string]any {
+	t.Helper()
+	mgr := session.NewManager()
+	sess := mgr.Create("t", "")
+	srv := httptest.NewServer(New(mgr, Config{Stdout: true, Stderr: true}, testStaticFS()).Handler())
+	t.Cleanup(srv.Close)
+
+	res, err := http.Post(srv.URL+"/api/sessions/"+sess.ID+"/exec", "application/json",
+		strings.NewReader(`{"command":`+strconv.Quote(cmd)+`}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusAccepted {
+		t.Fatalf("exec status = %d", res.StatusCode)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for sess.Info().Running && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	ws, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http")+"/ws/"+sess.ID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ws.Close()
+	var lines []map[string]any
+	for {
+		ws.SetReadDeadline(time.Now().Add(2 * time.Second))
+		var m map[string]any
+		if err := ws.ReadJSON(&m); err != nil {
+			break
+		}
+		lines = append(lines, m)
+		if m["type"] == "exit" {
+			break
+		}
+	}
+	return lines
+}
+
+func TestExecStringCommandHonoursQuotes(t *testing.T) {
+	lines := replayLines(t, `sh -c 'echo one two'`)
+	var sawOutput bool
+	for _, l := range lines {
+		if l["type"] == "stdout" && l["data"] == "one two" {
+			sawOutput = true
+		}
+		if l["type"] == "exit" && l["exit_code"] != float64(0) {
+			t.Fatalf("command exited %v — the quoted argument was split into separate words", l["exit_code"])
+		}
+	}
+	if !sawOutput {
+		t.Fatalf("expected stdout %q, got %v", "one two", lines)
+	}
+}
+
+func TestExecStringCommandUnterminatedQuoteIs400(t *testing.T) {
+	mgr := session.NewManager()
+	sess := mgr.Create("t", "")
+	s := New(mgr, Config{}, testStaticFS())
+
+	body := `{"command":"sh -c 'echo oops"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/sessions/"+sess.ID+"/exec", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body = %s", rec.Code, rec.Body.String())
 	}
 }
