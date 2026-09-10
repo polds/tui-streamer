@@ -24,15 +24,15 @@ var version = "dev"
 // multiFlag allows a flag to be specified more than once.
 type multiFlag []string
 
-func (f *multiFlag) String() string  { return strings.Join(*f, ", ") }
+func (f *multiFlag) String() string     { return strings.Join(*f, ", ") }
 func (f *multiFlag) Set(v string) error { *f = append(*f, v); return nil }
 
 func main() {
-	port   := flag.String("port", "8080", "TCP port to listen on")
-	title  := flag.String("title", "",    "window title (defaults to tui-streamer or bundle name)")
-	dir    := flag.String("dir",  ".",    "default working directory for commands")
-	stdout := flag.Bool("stdout", true,  "capture stdout (default true)")
-	stderr := flag.Bool("stderr", true,  "capture stderr (default true)")
+	port := flag.String("port", "8080", "TCP port to listen on")
+	title := flag.String("title", "", "window title (defaults to tui-streamer or bundle name)")
+	dir := flag.String("dir", ".", "default working directory for commands")
+	stdout := flag.Bool("stdout", true, "capture stdout (default true)")
+	stderr := flag.Bool("stderr", true, "capture stderr (default true)")
 
 	// Default -open to true when launched as a macOS .app bundle so the browser
 	// opens automatically and the user sees feedback (the app has no Dock icon).
@@ -106,9 +106,14 @@ Examples:
 		HasStartupBundle: *bundlePath != "",
 		TUIPath:          tuiPath,
 	}
+	cfg.Version = version
 	if loaded != nil {
 		cfg.Theme = loaded.Theme
 		cfg.Themes = bundle.FilterThemes(loaded.Themes)
+		cfg.Splash = loaded.Splash
+		cfg.SplashIcon = bundle.LoadIconSVG(*bundlePath, loaded.AppIcon)
+	} else {
+		cfg.Splash = bundle.DefaultSplash()
 	}
 
 	srv := server.New(manager, cfg, staticFS)
@@ -127,8 +132,6 @@ Examples:
 	if tuiPath != "" {
 		log.Printf("TUI_PATH=%s", tuiPath)
 	}
-
-
 
 	if *open {
 		// Give the HTTP listener a moment to bind before opening the browser.
