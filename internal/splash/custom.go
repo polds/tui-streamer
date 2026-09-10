@@ -60,15 +60,26 @@ func (in *inliner) resolve(ref string) (string, error) {
 		return "", fmt.Errorf("splash asset %q: %w", ref, err)
 	}
 	rootAbs, _ := filepath.Abs(in.root)
-	rel, err := filepath.Rel(rootAbs, abs)
+	rootEval, err := filepath.EvalSymlinks(rootAbs)
+	if err != nil {
+		return "", fmt.Errorf("splash asset %q: %w", ref, err)
+	}
+	absEval := abs
+	if _, statErr := os.Lstat(abs); statErr == nil {
+		absEval, err = filepath.EvalSymlinks(abs)
+		if err != nil {
+			return "", fmt.Errorf("splash asset %q: %w", ref, err)
+		}
+	}
+	rel, err := filepath.Rel(rootEval, absEval)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
 		return "", fmt.Errorf("splash asset %q escapes the splash directory", ref)
 	}
-	if !in.seen[abs] {
-		in.seen[abs] = true
-		in.files = append(in.files, abs)
+	if !in.seen[absEval] {
+		in.seen[absEval] = true
+		in.files = append(in.files, absEval)
 	}
-	return abs, nil
+	return absEval, nil
 }
 
 func (in *inliner) dataURI(ref string) (string, error) {
@@ -151,7 +162,12 @@ func renderCustom(cfg bundle.SplashConfig, in Inputs) (string, string, error) {
 	var head strings.Builder
 	for _, link := range reLink.FindAllString(headSrc, -1) {
 		hm := reHref.FindStringSubmatch(link)
-		if hm == nil || !isRelativeRef(hm[1]) {
+		if hm == nil {
+			continue
+		}
+		if !isRelativeRef(hm[1]) {
+			head.WriteString(link)
+			head.WriteString("\n")
 			continue
 		}
 		abs, err := il.resolve(hm[1])

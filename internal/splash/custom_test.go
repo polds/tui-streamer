@@ -62,7 +62,18 @@ func TestCustomPageAssetsListed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]bool{filepath.Join(filepath.Dir(c.HTML), "font.css"): true, filepath.Join(filepath.Dir(c.HTML), "img", "logo.svg"): true}
+	wantFontCSS, err := filepath.EvalSymlinks(filepath.Join(filepath.Dir(c.HTML), "font.css"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantLogo, err := filepath.EvalSymlinks(filepath.Join(filepath.Dir(c.HTML), "img", "logo.svg"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Expected paths are symlink-resolved because resolve() now evaluates
+	// symlinks for containment checking and returns the real path (e.g. on
+	// macOS, t.TempDir() lives under /var, itself a symlink to /private/var).
+	want := map[string]bool{wantFontCSS: true, wantLogo: true}
 	if len(got) != len(want) {
 		t.Fatalf("assets = %v", got)
 	}
@@ -99,5 +110,35 @@ func TestCustomPageSizeCap(t *testing.T) {
 	os.WriteFile(filepath.Join(filepath.Dir(c.HTML), "big.bin"), big, 0o644)
 	if _, err := Render(c, Inputs{Title: "T"}); err == nil || !strings.Contains(err.Error(), "10 MiB") {
 		t.Fatalf("expected size cap error, got %v", err)
+	}
+}
+
+func TestCustomPageKeepsAbsoluteStylesheetLink(t *testing.T) {
+	c := writeCustom(t, `<html><head><link rel="stylesheet" href="https://fonts.example/x.css"></head><body>hi</body></html>`)
+	doc, err := Render(c, Inputs{Title: "T"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(doc.Head, `<link rel="stylesheet" href="https://fonts.example/x.css">`) {
+		t.Errorf("absolute stylesheet link should be preserved, got head: %s", doc.Head)
+	}
+}
+
+func TestCustomPageRejectsSymlinkEscape(t *testing.T) {
+	c := writeCustom(t, `<html><body><img src="img/leak.svg"></body></html>`)
+	outsideDir := t.TempDir()
+	outside := filepath.Join(outsideDir, "outside.txt")
+	if err := os.WriteFile(outside, []byte("leaked"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(filepath.Dir(c.HTML), "img", "leak.svg")
+	if err := os.Symlink(outside, link); err != nil {
+		if os.IsPermission(err) {
+			t.Skip("symlink not permitted in this environment")
+		}
+		t.Fatal(err)
+	}
+	if _, err := Render(c, Inputs{Title: "T"}); err == nil || !strings.Contains(err.Error(), "escapes") {
+		t.Fatalf("expected escape error, got %v", err)
 	}
 }
