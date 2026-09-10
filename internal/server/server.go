@@ -8,12 +8,14 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/gorilla/websocket"
 	"github.com/polds/tui-streamer/internal/bundle"
 	"github.com/polds/tui-streamer/internal/session"
+	"github.com/polds/tui-streamer/internal/splash"
 )
 
 // maxBundleBodyBytes caps the YAML body accepted by /api/bundles (4 MiB).
@@ -46,6 +48,12 @@ type Config struct {
 	Themes []string
 	// TUIPath is exported as TUI_PATH on executed commands. Empty means unset.
 	TUIPath string
+	// Splash configures the startup splash (zero value = built-in minimal).
+	Splash bundle.SplashConfig
+	// SplashIcon is the app icon SVG inlined into the splash, or nil.
+	SplashIcon []byte
+	// Version is shown on splash styles that display it.
+	Version string
 }
 
 // Server wires together the session manager and HTTP mux.
@@ -126,6 +134,24 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request, staticFS fs
 	}
 	themeScript := fmt.Sprintf("<script>window.THEME_CONFIG = %s;</script>", themePayload)
 	html = strings.Replace(html, "</head>", "  "+themeScript+"\n</head>", 1)
+
+	// Inject the splash overlay. ?splash=final is the native app handing off
+	// after its own splash; the overlay then shows the resting frame only.
+	phase := splash.PhaseIntro
+	remaining := 0
+	if r.URL.Query().Get("splash") == "final" {
+		phase = splash.PhaseFinal
+		remaining, _ = strconv.Atoi(r.URL.Query().Get("remaining"))
+	}
+	s.mu.RLock()
+	splashCfg, icon, version := s.cfg.Splash, s.cfg.SplashIcon, s.cfg.Version
+	s.mu.RUnlock()
+	if doc, err := splash.Render(splashCfg, splash.Inputs{Title: title, Version: version, IconSVG: icon, Phase: phase, RemainingMS: remaining}); err == nil {
+		html = strings.Replace(html, "</head>", "  "+doc.Head+"\n</head>", 1)
+		html = strings.Replace(html, `<div id="splash" hidden></div>`, doc.Body, 1)
+	} else {
+		log.Printf("splash: %v", err)
+	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write([]byte(html))
@@ -345,11 +371,22 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	title := s.cfg.Title
 	hasStartup := s.cfg.HasStartupBundle
 	s.mu.RUnlock()
+	s.mu.RLock()
+	sp := s.cfg.Splash.WithDefaults()
+	s.mu.RUnlock()
 	json.NewEncoder(w).Encode(map[string]any{
 		"title":          title,
 		"theme":          defaultTheme,
 		"themes":         themes,
 		"startup_bundle": hasStartup,
+		"splash": map[string]any{
+			"style":         sp.Style,
+			"window":        sp.Window,
+			"tagline":       sp.Tagline,
+			"accent":        sp.Accent,
+			"background":    sp.Background,
+			"minDurationMs": sp.MinDuration.Milliseconds(),
+		},
 	})
 }
 

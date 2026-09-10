@@ -9,13 +9,14 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/polds/tui-streamer/internal/bundle"
 	"github.com/polds/tui-streamer/internal/session"
 )
 
 func testStaticFS() fstest.MapFS {
 	return fstest.MapFS{
 		"index.html": &fstest.MapFile{
-			Data: []byte("<html><head><title>tui-streamer</title></head><body><div class=\"header-logo\">\n    tui-streamer\n  </div></body></html>"),
+			Data: []byte("<html><head><title>tui-streamer</title></head><body><div id=\"splash\" hidden></div><div class=\"header-logo\">\n    tui-streamer\n  </div></body></html>"),
 		},
 	}
 }
@@ -70,5 +71,67 @@ func TestExecAllowlist(t *testing.T) {
 	s.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403", rec.Code)
+	}
+}
+
+func TestIndexInjectsSplashOverlay(t *testing.T) {
+	mgr := session.NewManager()
+	cfg := bundle.DefaultSplash()
+	cfg.Style = "arc"
+	cfg.Tagline = "Sync <it>"
+	s := New(mgr, Config{Title: "Sync App", Splash: cfg, SplashIcon: []byte("<svg/>")}, testStaticFS())
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	html := rec.Body.String()
+	for _, want := range []string{
+		`<div id="splash" data-style="arc" data-phase="intro"`,
+		`Sync &lt;it&gt;`,
+		`window.SPLASH = {`,
+		`"phase":"intro"`,
+		`window.splash =`,
+		`data:image/svg+xml;base64,`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("index missing %q", want)
+		}
+	}
+	if strings.Contains(html, `<div id="splash" hidden></div>`) {
+		t.Errorf("placeholder should have been replaced")
+	}
+}
+
+func TestIndexSplashFinalPhase(t *testing.T) {
+	mgr := session.NewManager()
+	s := New(mgr, Config{Title: "T"}, testStaticFS())
+	req := httptest.NewRequest(http.MethodGet, "/?splash=final&remaining=300", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	html := rec.Body.String()
+	if !strings.Contains(html, `data-phase="final"`) || !strings.Contains(html, `"remainingMs":300`) {
+		t.Errorf("final phase not honoured: %s", html)
+	}
+}
+
+func TestConfigExposesSplash(t *testing.T) {
+	mgr := session.NewManager()
+	cfg := bundle.DefaultSplash()
+	cfg.Style = "jetbrains"
+	cfg.Window = "card"
+	s := New(mgr, Config{Splash: cfg}, testStaticFS())
+	req := httptest.NewRequest(http.MethodGet, "/api/config", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	var out map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	sp, _ := out["splash"].(map[string]any)
+	if sp["style"] != "jetbrains" || sp["window"] != "card" || sp["minDurationMs"] != float64(1200) {
+		t.Errorf("splash config = %#v", sp)
+	}
+	if _, has := sp["html"]; has {
+		t.Errorf("html path must not be exposed")
 	}
 }
