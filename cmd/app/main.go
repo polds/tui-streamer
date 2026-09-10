@@ -26,7 +26,9 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	webview "github.com/webview/webview_go"
@@ -34,8 +36,12 @@ import (
 	"github.com/polds/tui-streamer/internal/bundle"
 	"github.com/polds/tui-streamer/internal/server"
 	"github.com/polds/tui-streamer/internal/session"
+	"github.com/polds/tui-streamer/internal/splash"
 	"github.com/polds/tui-streamer/web"
 )
+
+// version is set at build time via -ldflags "-X main.version=<tag>" (see Makefile).
+var version = "dev"
 
 // multiFlag allows a flag to be specified more than once.
 type multiFlag []string
@@ -108,10 +114,19 @@ func main() {
 		HasStartupBundle: b != nil,
 		TUIPath:          tuiPath,
 	}
+	cfg.Version = version
+	splashCfg := bundle.DefaultSplash()
+	var iconSVG []byte
 	if b != nil {
 		cfg.Theme = b.Theme
 		cfg.Themes = bundle.FilterThemes(b.Themes)
+		splashCfg = b.Splash
+		iconSVG = bundle.LoadIconSVG(bundle.PackagedPath(), b.AppIcon)
+	} else {
+		iconSVG = bundle.LoadIconSVG("", "")
 	}
+	cfg.Splash = splashCfg
+	cfg.SplashIcon = iconSVG
 
 	srv := server.New(manager, cfg, staticFS)
 	if b != nil {
@@ -132,20 +147,77 @@ func main() {
 	wv := webview.New(*debug)
 	defer wv.Destroy()
 
+	const mainW, mainH = 1280, 800
+	card := splashCfg.Window == bundle.SplashWindowCard
 	wv.SetTitle(*title)
-	wv.SetSize(1280, 800, webview.HintNone)
+	if card {
+		wv.SetSize(splashCfg.Size[0], splashCfg.Size[1], webview.HintNone)
+		applyCardWindow(wv.Window(), splashCfg.Size[0], splashCfg.Size[1], splashCfg.Background)
+	} else {
+		wv.SetSize(mainW, mainH, webview.HintNone)
+	}
 
-	// Show a loading splash immediately so the user has feedback while the
-	// HTTP server finishes binding its socket.
-	wv.SetHtml(splashHTML(*title))
+	// Show the splash immediately so the user has feedback while the HTTP
+	// server finishes binding its socket.
+	doc, err := splash.Render(splashCfg, splash.Inputs{Title: *title, Version: version, IconSVG: iconSVG, Phase: splash.PhaseIntro})
+	if err != nil {
+		log.Fatalf("splash: %v", err)
+	}
+	splashShown := time.Now()
+	wv.SetHtml(doc.HTML)
 
-	// Once the server is ready, navigate to it on the main (UI) thread.
+	// ── handoff state machine ────────────────────────────────────────────────
+	// Navigate to the UI when the splash intro has finished and the server is
+	// up (or after 10s regardless). In card mode, restore the main window once
+	// the UI's overlay reports it has faded out.
+	var (
+		handoffMu sync.Mutex
+		animated  bool
+		serverUp  bool
+		navigated bool
+	)
+	navigate := func() {
+		handoffMu.Lock()
+		defer handoffMu.Unlock()
+		if navigated || !(animated && serverUp) {
+			return
+		}
+		navigated = true
+		remaining := splashCfg.MinDuration - time.Since(splashShown)
+		if remaining < 0 {
+			remaining = 0
+		}
+		target := url + "/?splash=final&remaining=" + strconv.FormatInt(remaining.Milliseconds(), 10)
+		wv.Dispatch(func() { wv.Navigate(target) })
+	}
+	wv.Bind("__splashPost", func(name string) {
+		switch name {
+		case "animated":
+			handoffMu.Lock()
+			animated = true
+			handoffMu.Unlock()
+			navigate()
+		case "dismissed":
+			if card {
+				wv.Dispatch(func() { restoreMainWindow(wv.Window(), mainW, mainH, *title) })
+			}
+		}
+	})
 	go func() {
 		waitForServer(url, 10*time.Second)
-		wv.Dispatch(func() {
-			wv.Navigate(url)
-		})
+		handoffMu.Lock()
+		serverUp = true
+		animated = animated || time.Since(splashShown) > 10*time.Second // give up waiting for the page
+		handoffMu.Unlock()
+		navigate()
 	}()
+	// Safety net: a custom page that never reports `animated` still hands off.
+	time.AfterFunc(splashCfg.MinDuration+5*time.Second, func() {
+		handoffMu.Lock()
+		animated = true
+		handoffMu.Unlock()
+		navigate()
+	})
 
 	// WKWebView does not wire up the standard macOS Edit-menu responder actions
 	// (copy:, paste:, selectAll:, etc.) because the app has no NSMenu with those
@@ -207,87 +279,4 @@ func waitForServer(url string, timeout time.Duration) {
 		time.Sleep(30 * time.Millisecond)
 	}
 	log.Printf("warning: server did not respond within %s; navigating anyway", timeout)
-}
-
-// splashHTML returns an inline HTML page that is displayed in the WKWebView
-// window while the embedded HTTP server is starting up.  It intentionally
-// matches the app's default dark terminal theme so the transition is seamless.
-func splashHTML(title string) string {
-	html := `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-  body {
-    background: #1a1b26;
-    color: #c0caf5;
-    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100vh;
-    user-select: none;
-    -webkit-user-select: none;
-  }
-
-  .logo {
-    font-size: 5rem;
-    font-weight: 700;
-    color: #7aa2f7;
-    letter-spacing: -0.02em;
-    line-height: 1;
-    margin-bottom: 2.5rem;
-  }
-  .logo .cursor {
-    color: #9ece6a;
-    animation: blink-cursor 1s step-end infinite;
-  }
-
-  .label {
-    font-size: 0.8rem;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: #414868;
-    margin-bottom: 2.5rem;
-  }
-
-  .progress {
-    width: 220px;
-    height: 2px;
-    background: #24283b;
-    border-radius: 1px;
-    overflow: hidden;
-    position: relative;
-  }
-  .progress-bar {
-    position: absolute;
-    top: 0; left: 0;
-    height: 100%;
-    width: 45%;
-    background: linear-gradient(90deg, transparent, #7aa2f7 50%, transparent);
-    border-radius: 1px;
-    animation: slide 1.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-  }
-
-  @keyframes blink-cursor {
-    0%, 100% { opacity: 1; }
-    50%       { opacity: 0; }
-  }
-  @keyframes slide {
-    0%   { transform: translateX(-100%); }
-    100% { transform: translateX(520px); }
-  }
-</style>
-</head>
-<body>
-  <div class="logo">&gt;<span class="cursor">_</span></div>
-  <div class="label">{{TITLE}} &mdash; Starting&hellip;</div>
-  <div class="progress"><div class="progress-bar"></div></div>
-</body>
-</html>`
-	return strings.Replace(html, "{{TITLE}}", title, 1)
 }

@@ -24,7 +24,6 @@ static void splash_apply_card(void *win, double w, double h, int hasColor, doubl
 	[window setHasShadow:YES];
 	[window setMovableByWindowBackground:YES];
 	[window setFrame:splash_centered(w, h) display:YES];
-	[window center];
 	[window makeKeyAndOrderFront:nil];
 }
 
