@@ -1018,3 +1018,6 @@ body {
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
+
+/* Splash overlay placeholder stays hidden if the server did not fill it. */
+#splash[hidden] { display: none !important; }

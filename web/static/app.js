@@ -469,6 +469,7 @@ class App {
     this.buffers     = {};   // sessionId → Line[]
     this.collapsedBundles = new Set(); // bundle names that are collapsed
     this.lastSelectedElement = null;
+    this.splash = new Splash();
 
     // DOM refs
     this.$sessionList = document.getElementById('session-list');
@@ -661,6 +662,8 @@ class App {
     for (const s of this.sessions) {
       if (!this.sockets[s.id]) this._subscribe(s.id);
     }
+    // No sessions → nothing will ever open a socket; we're as connected as we get.
+    if (this.sessions.length === 0) this.splash.markConnected();
     setTimeout(() => this._refresh(), 4000);
   }
 
@@ -691,6 +694,7 @@ class App {
         }
       },
       (status) => {
+        if (status === 'connected') this.splash.markConnected();
         this.statuses[sessionId] = status;
         if (this.activeId === sessionId) this._updateConnBadge(status);
         this._renderSidebar();
@@ -1264,6 +1268,52 @@ class App {
       };
       document.addEventListener('keydown', keyHandler);
     });
+  }
+}
+
+// ── Splash overlay ──────────────────────────────────────────────────────────
+//
+// The server injects a #splash overlay (see internal/splash). It is dismissed
+// only when all of these hold:
+//   1. the page reported `splash:animated` (intro finished),
+//   2. the app is connected (sessions listed + first WebSocket open, or none),
+//   3. minDuration has elapsed (counted from page start, minus any
+//      `remainingMs` a native handoff already spent).
+// The shim inside the overlay owns the fade; we just call splash.dismiss().
+
+class Splash {
+  constructor() {
+    this.$el = document.getElementById('splash');
+    this.cfg = window.SPLASH || {};
+    this.animated  = false;
+    this.connected = false;
+    this.done      = false;
+    if (!this.$el || this.$el.hidden) { this.done = true; return; }
+
+    const owed = this.cfg.phase === 'final'
+      ? (this.cfg.remainingMs || 0)
+      : (this.cfg.minDurationMs || 0);
+    this._readyAt = performance.now() + Math.max(0, owed);
+
+    document.addEventListener('splash:animated', () => { this.animated = true; this._maybeDismiss(); });
+    document.addEventListener('splash:dismissed', () => {
+      this.$el?.remove();
+      this.$el = null;
+    });
+  }
+
+  markConnected() {
+    this.connected = true;
+    this._maybeDismiss();
+  }
+
+  _maybeDismiss() {
+    if (this.done || !this.animated || !this.connected) return;
+    const wait = this._readyAt - performance.now();
+    if (wait > 0) { setTimeout(() => this._maybeDismiss(), wait); return; }
+    this.done = true;
+    if (window.splash) window.splash.dismiss();
+    else this.$el?.remove();
   }
 }
 
