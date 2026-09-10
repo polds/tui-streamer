@@ -8,6 +8,18 @@
 //
 // Transport: window.__splashPost(name) when the native host bound it, and a
 // document CustomEvent('splash:' + name) for the browser host.
+//
+// Ordering: this shim runs inline in <head>, so its own DOMContentLoaded
+// listener (registered below when the document is still loading) fires
+// before a page script's own DOMContentLoaded listener (registered later, in
+// <body>) does. For the phase==='final' / reduced-motion path, watchIntro
+// would otherwise call splash.animated() synchronously inside its own
+// listener, dispatching 'splash:animated' before the page's listener exists
+// to hear it — deferring with setTimeout(splash.animated, 0) lets
+// later-registered DOMContentLoaded listeners run first. window.splash.sent
+// is exposed as a fallback for any listener that still starts late (e.g. one
+// created inside a nested DOMContentLoaded/async callback): it can check
+// sent.animated to catch up on an event it missed.
 (function () {
   if (window.splash) return;
   var cfg = window.SPLASH || {};
@@ -33,13 +45,14 @@
     },
     dismissed: function () { post('dismissed'); },
     config: cfg,
+    sent: sent,
   };
 
   function watchIntro() {
     var r = root();
     if (!r) return;
     var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (cfg.phase === 'final' || reduced) { splash.animated(); return; }
+    if (cfg.phase === 'final' || reduced) { setTimeout(splash.animated, 0); return; }
     var els = r.querySelectorAll('[data-splash-intro]');
     var pending = els.length;
     var cap = setTimeout(splash.animated, 5000);

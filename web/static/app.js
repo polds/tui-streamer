@@ -1277,8 +1277,9 @@ class App {
 // only when all of these hold:
 //   1. the page reported `splash:animated` (intro finished),
 //   2. the app is connected (sessions listed + first WebSocket open, or none),
-//   3. minDuration has elapsed (counted from page start, minus any
-//      `remainingMs` a native handoff already spent).
+//   3. minDuration has elapsed, measured from the page's first paint
+//      (performance.timeOrigin), minus any `remainingMs` a native handoff
+//      already spent.
 // The shim inside the overlay owns the fade; we just call splash.dismiss().
 
 class Splash {
@@ -1293,9 +1294,12 @@ class Splash {
     const owed = this.cfg.phase === 'final'
       ? (this.cfg.remainingMs || 0)
       : (this.cfg.minDurationMs || 0);
-    this._readyAt = performance.now() + Math.max(0, owed);
+    this._readyAt = Math.max(0, owed);
 
     document.addEventListener('splash:animated', () => { this.animated = true; this._maybeDismiss(); });
+    // The shim may have already fired 'animated' before this listener existed
+    // (e.g. phase === 'final' dispatches on the next tick after DOMContentLoaded).
+    if (window.splash && window.splash.sent && window.splash.sent.animated) { this.animated = true; }
     document.addEventListener('splash:dismissed', () => {
       this.$el?.remove();
       this.$el = null;
