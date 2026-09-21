@@ -75,7 +75,7 @@ func main() {
 			fmt.Printf("%s\t%s\n", resolved, dest)
 		}
 	default:
-		// Default to name so `bundlemeta file.yaml` matches bundle-name.py.
+		// Default to name so `bundlemeta file.yaml` prints metadata.name.
 		fmt.Print(f.Name)
 	}
 }
