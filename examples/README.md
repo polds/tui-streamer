@@ -74,7 +74,7 @@ All examples assume you've built tui-streamer first:
 make build
 
 # For macOS app examples
-make app-webview
+make app
 ```
 
 ---
