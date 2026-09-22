@@ -65,20 +65,6 @@ Pre-configure sessions in a YAML file and load them at startup or import them fr
 
 ---
 
-## Screenshots
-
-> **Note:** Add screenshots here showing:
-> - Main terminal interface with output streaming
-> - Theme selection (show 2-3 different themes)
-> - Session management UI
-> - macOS native app window
-
-<!-- Example: -->
-<!-- ![Main Interface](docs/screenshots/main-interface.png) -->
-<!-- ![Theme Selection](docs/screenshots/themes.png) -->
-
----
-
 ## Installation
 
 ### Download Pre-built Binaries
@@ -128,7 +114,7 @@ go build -o dist/tui-streamer.exe ./cmd/server
 
 1. **Start the server:**
    ```bash
-   ./tui-streamer -open
+   ./dist/tui-streamer -open
    ```
    This starts the server on port 8080 and opens your browser automatically.
 
@@ -143,7 +129,7 @@ go build -o dist/tui-streamer.exe ./cmd/server
    ```bash
    curl -X POST http://localhost:8080/api/sessions/{session-id}/exec \
      -H "Content-Type: application/json" \
-     -d '{"command": "ls", "args": ["-la"]}'
+     -d '{"command": "ls -la"}'
    ```
 
 4. **Watch the output stream** in your browser at `http://localhost:8080`
