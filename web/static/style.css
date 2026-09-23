@@ -223,6 +223,41 @@
   --ansi-bright-white:   #4c4f69;
 }
 
+/* Catppuccin Latte tinted pink: rosewater/flamingo/pink accents on rosy neutrals */
+[data-theme="catppuccin-latte-pink"] {
+  --bg:            #f4eef2;
+  --bg-panel:      #ede5ea;
+  --bg-input:      #f4eef2;
+  --bg-hover:      #e6dce2;
+  --bg-active:     #ddd0d8;
+  --border:        #e6dce2;
+  --text:          #4c4f69;
+  --text-dim:      #5c5f77;
+  --text-muted:    #6c6f85;
+  --accent:        #ea76cb;
+  --accent-hover:  #dd7878;
+  --success:       #40a02b;
+  --warning:       #df8e1d;
+  --danger:        #d20f39;
+  --danger-hover:  #e64553;
+  --ansi-black:          #5c5f77;
+  --ansi-red:            #d20f39;
+  --ansi-green:          #40a02b;
+  --ansi-yellow:         #df8e1d;
+  --ansi-blue:           #1e66f5;
+  --ansi-magenta:        #ea76cb;
+  --ansi-cyan:           #179299;
+  --ansi-white:          #4c4f69;
+  --ansi-bright-black:   #6c6f85;
+  --ansi-bright-red:     #e64553;
+  --ansi-bright-green:   #40a02b;
+  --ansi-bright-yellow:  #fe640b;
+  --ansi-bright-blue:    #209fb5;
+  --ansi-bright-magenta: #8839ef;
+  --ansi-bright-cyan:    #04a5e5;
+  --ansi-bright-white:   #4c4f69;
+}
+
 [data-theme="catppuccin-frappe"] {
   --bg:            #303446;
   --bg-panel:      #292c3c;
