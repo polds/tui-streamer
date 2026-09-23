@@ -6,7 +6,7 @@ ifneq ($(BUNDLE),)
   ifeq ($(wildcard $(BUNDLE)),)
     $(error BUNDLE file not found: $(BUNDLE))
   endif
-  BUNDLE_NAME := $(shell python3 scripts/bundle-name.py "$(BUNDLE)")
+  BUNDLE_NAME := $(shell go run ./cmd/bundlemeta -name "$(BUNDLE)" 2>/dev/null)
   ifneq ($(BUNDLE_NAME),)
     APP_NAME := $(BUNDLE_NAME)
   else
