@@ -5,12 +5,10 @@ on:
     branches: [main, master]
     paths-ignore:
       - "*.md"
-      - "docs/**"
   pull_request:
     branches: [main, master]
     paths-ignore:
       - "*.md"
-      - "docs/**"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -69,18 +67,6 @@ jobs:
       - name: Run tests
         if: ${{ matrix.os == 'macos-latest' && matrix.go-version == '1.22' }}
         run: go test -v -race -count=1 -timeout=120s -ldflags="-B gobuildid" ./...
-
-      - name: Upload coverage
-        if: matrix.os == 'ubuntu-latest' && matrix.go-version == '1.22'
-        run: go test -coverprofile=coverage.out -covermode=atomic ./...
-
-      - name: Upload coverage report
-        if: matrix.os == 'ubuntu-latest' && matrix.go-version == '1.22'
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: coverage.out
-          retention-days: 7
 
   build:
     name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
