@@ -2,11 +2,11 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
     paths-ignore:
       - "*.md"
   pull_request:
-    branches: [main, master]
+    branches: [main]
     paths-ignore:
       - "*.md"
 
@@ -109,10 +109,3 @@ jobs:
             -ldflags "-X main.version=$(git describe --tags --always --dirty 2>/dev/null || echo dev) -s -w" \
             -o dist/tui-streamer-${{ matrix.goos }}-${{ matrix.goarch }}${EXT} \
             ./cmd/server
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: tui-streamer-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: dist/tui-streamer-*
-          retention-days: 7
